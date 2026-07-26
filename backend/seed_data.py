@@ -113,12 +113,18 @@ async def _refresh_mentors(session: AsyncSession):
 
 async def seed_all_data():
     async with async_session_maker() as session:
-        # 0. 注入超级管理员 Kleinle
+        # 0. 注入超级管理员 Kleinle（密码从配置读取，默认值仅供本地开发）
+        from core.config import settings as app_settings
+
         stmt_admin = select(User).where(User.username == "Kleinle")
         if (await session.execute(stmt_admin)).scalars().first() is None:
+            admin_password = app_settings.ADMIN_INITIAL_PASSWORD
+            if admin_password == "123456":
+                print("[Seed][WARN] SuperAdmin is using the default password. "
+                      "Set ADMIN_INITIAL_PASSWORD in backend/.env before exposing this service.")
             session.add(User(
                 username="Kleinle",
-                hashed_password=get_password_hash("123456"),
+                hashed_password=get_password_hash(admin_password),
                 nickname="Kleinle (SuperAdmin)",
                 role="admin",
             ))

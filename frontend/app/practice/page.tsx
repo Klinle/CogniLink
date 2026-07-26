@@ -25,6 +25,16 @@ import { cn } from "@/lib/utils";
 type ExerciseMode = "system" | "dynamic" | "collection";
 type TabMode = "code" | "quiz" | "match" | "arrange" | "fill";
 
+// 单选题结构（与 study-panel 保持一致）
+interface QuizQuestion {
+  id?: string;
+  text?: string;
+  question?: string;
+  options?: string[];
+  answer?: number;
+  explanation?: string;
+}
+
 // 评测结果类型
 interface EvalResult {
   status: string;
@@ -77,7 +87,6 @@ function PracticeContent() {
   const currentModel = SUPPORTED_MODELS.find((m) => m.id === model);
   const provider = currentModel?.provider || "openai";
   const apiKey = apiKeys[provider] || (provider === "openai" ? openaiApiKey : "") || "";
-  const baseUrl = baseUrls[provider] || "";
 
   // 1. 获取系统内置题库
   const fetchLabs = useCallback(async (mode: TabMode, filterNodeId?: string | null) => {
@@ -226,6 +235,7 @@ function PracticeContent() {
           title: lab.title,
           exercise_type: lab.lab_type || "code",
           content: lab.test_cases || {},
+          answer: lab.answer || lab.test_cases?.pairs || lab.test_cases?.correct_order || lab.test_cases?.blanks || {},
           explanation: lab.detailed_explanation || "无解析",
           node_id: lab.node_id || undefined,
         });
@@ -245,7 +255,7 @@ function PracticeContent() {
       const res = await labApi.generateLab({
         exercise_type: dynamicType,
         difficulty: dynamicDifficulty,
-        category: selectedSubject === "all" ? undefined : selectedSubject,
+        subject: selectedSubject === "all" ? undefined : selectedSubject,
         node_id: nodeId || undefined,
         api_key: apiKey,
         model: model,
@@ -281,13 +291,13 @@ function PracticeContent() {
     setEvalResult(null);
     try {
       const activeModel = SUPPORTED_MODELS.find((m) => m.id === model);
-      const res = await labApi.submitCode({
-        lab_id: selectedLab.id,
+      const res = await labApi.submitLab(
+        selectedLab.id,
         code,
-        api_key: apiKey,
-        model: model,
-        base_url: activeModel?.provider ? baseUrls[activeModel.provider] : undefined,
-      });
+        apiKey,
+        model,
+        activeModel?.provider ? baseUrls[activeModel.provider] : undefined,
+      );
       setEvalResult(res);
       
       try {
@@ -314,7 +324,7 @@ function PracticeContent() {
     try {
       const activeModel = SUPPORTED_MODELS.find((m) => m.id === model);
       const res = await labApi.evaluateDynamic({
-        exercise: selectedLab as Record<string, unknown>,
+        exercise: selectedLab as unknown as Record<string, unknown>,
         answers,
         node_id: selectedLab.node_id,
         api_key: apiKey,
@@ -342,29 +352,22 @@ function PracticeContent() {
   const reportDynamicKnowledgeLighted = async (lab: Lab, answers: Record<string, unknown>) => {
     if (lab.lab_type === "quiz") {
       try {
-        const questionItem = (lab.test_cases?.questions?.[0] || lab.questions?.[0] || lab) as QuizQuestion;
+        const labData = lab as unknown as {
+          test_cases?: { questions?: QuizQuestion[] };
+          questions?: QuizQuestion[];
+        };
+        const questionItem = (labData.test_cases?.questions?.[0] || labData.questions?.[0] || lab) as QuizQuestion;
         const singleAnswer = { [questionItem.id || "0"]: answers[questionItem.id || "0"] };
         const activeModel = SUPPORTED_MODELS.find((m) => m.id === model);
 
-        await labApi.submitCode({
-          lab_id: lab.id,
-          code: "",
-          api_key: apiKey,
-          model: model,
-          base_url: activeModel?.provider ? baseUrls[activeModel.provider] : undefined,
-          dynamic_eval: JSON.stringify({
-            exercise: {
-              ...lab,
-              questions: [questionItem]
-            },
-            code: "",
-            answers: singleAnswer,
-            node_id: lab.node_id || undefined,
-            api_key: apiKey,
-            model,
-            base_url: baseUrl,
-          }),
-        });
+        await labApi.submitLab(
+          lab.id,
+          "",
+          apiKey,
+          model,
+          activeModel?.provider ? baseUrls[activeModel.provider] : undefined,
+          singleAnswer as Record<string, number>,
+        );
       } catch (e) {
         console.error("Failed to submit dynamic progress:", e);
       }

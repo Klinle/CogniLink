@@ -184,6 +184,32 @@ class RAGService:
 
         return result
 
+    async def _format_chunks(
+        self, session: AsyncSession, chunks: List[DocumentChunk]
+    ) -> str:
+        """将 chunk 列表格式化为带 [来源: 文档名, 第X页] 标注的上下文字符串"""
+        if not chunks:
+            return ""
+
+        # Fetch document titles for source annotations
+        doc_ids = {chunk.document_id for chunk in chunks}
+        doc_titles = {}
+        if doc_ids:
+            doc_result = await session.execute(
+                select(Document.id, Document.title).where(Document.id.in_(doc_ids))
+            )
+            doc_titles = {row[0]: row[1] for row in doc_result.all()}
+
+        # Build context with source annotations
+        parts = []
+        for chunk in chunks:
+            title = doc_titles.get(chunk.document_id, "未知文档")
+            page_info = f", 第{chunk.page_number}页" if chunk.page_number else ""
+            source_tag = f"[来源: {title}{page_info}]"
+            parts.append(f"{source_tag}\n{chunk.content}")
+
+        return "\n\n".join(parts)
+
     async def get_context_for_query(
         self,
         query: str,
@@ -207,27 +233,56 @@ class RAGService:
             query, api_key, session, limit, provider, base_url,
             document_ids, use_local, user_id, domain
         )
+        return await self._format_chunks(session, chunks)
 
-        if not chunks:
+    async def get_context_for_queries(
+        self,
+        queries: List[str],
+        api_key: str,
+        session: AsyncSession,
+        limit_per_query: int = 4,
+        max_chunks: int = 8,
+        provider: str = "openai",
+        base_url: str = None,
+        document_ids: Optional[List[str]] = None,
+        use_local: bool = True,
+        user_id: str = None,
+        domain: Optional[str] = None,
+    ) -> str:
+        """多子查询并行混合检索 + 去重合并（RAG 流水线『多通道并行检索』的知识库通道）。
+
+        AsyncSession 不支持并发复用，因此每个子查询使用独立会话并行执行，
+        结果按子查询顺序去重合并后统一格式化。
+        """
+        import asyncio
+        from core.database import async_session_maker
+
+        cleaned = [q.strip() for q in (queries or []) if q and q.strip()][:3]
+        if not cleaned:
             return ""
 
-        # Fetch document titles for source annotations
-        doc_ids = {chunk.document_id for chunk in chunks}
-        doc_titles = {}
-        if doc_ids:
-            doc_result = await session.execute(
-                select(Document.id, Document.title).where(Document.id.in_(doc_ids))
-            )
-            doc_titles = {row[0]: row[1] for row in doc_result.all()}
+        async def _search_one(q: str) -> List[DocumentChunk]:
+            async with async_session_maker() as sub_session:
+                return await self.hybrid_search(
+                    q, api_key, sub_session, limit_per_query, provider,
+                    base_url, document_ids, use_local, user_id, domain
+                )
 
-        # Build context with source annotations
-        parts = []
-        for chunk in chunks:
-            title = doc_titles.get(chunk.document_id, "未知文档")
-            page_info = f", 第{chunk.page_number}页" if chunk.page_number else ""
-            source_tag = f"[来源: {title}{page_info}]"
-            parts.append(f"{source_tag}\n{chunk.content}")
+        results = await asyncio.gather(
+            *[_search_one(q) for q in cleaned], return_exceptions=True
+        )
 
-        return "\n\n".join(parts)
+        seen = set()
+        merged: List[DocumentChunk] = []
+        for res in results:
+            if isinstance(res, BaseException):
+                print(f"[RAG] Sub-query retrieval failed: {type(res).__name__}: {res}")
+                continue
+            for chunk in res:
+                if chunk.id not in seen:
+                    seen.add(chunk.id)
+                    merged.append(chunk)
+
+        return await self._format_chunks(session, merged[:max_chunks])
 
 rag_service = RAGService()

@@ -95,6 +95,62 @@ async def list_conversations(
     ]
 
 
+@router.get("/search")
+async def search_conversations(
+    q: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """搜索对话（标题和内容）
+
+    注意：必须注册在 /{conversation_id} 之前，否则会被路径参数路由遮蔽。
+    """
+    if not q or len(q) < 2:
+        raise HTTPException(status_code=400, detail="搜索关键词至少需要2个字符")
+
+    import uuid as _uuid
+    user_uuid = _uuid.UUID(str(current_user.id))
+
+    # 搜索对话标题
+    title_query = select(Conversation).where(
+        Conversation.is_active == 1,
+        Conversation.user_id == user_uuid,
+        Conversation.title.ilike(f"%{q}%")
+    )
+
+    # 搜索消息内容，关联到对话
+    message_query = select(Conversation).join(
+        Message, Message.conversation_id == Conversation.id
+    ).where(
+        Conversation.is_active == 1,
+        Conversation.user_id == user_uuid,
+        Message.content.ilike(f"%{q}%")
+    ).distinct()
+
+    # 执行查询
+    title_result = await session.execute(title_query)
+    message_result = await session.execute(message_query)
+
+    # 合并结果（去重）
+    conversations = list(set(title_result.scalars().all()) | set(message_result.scalars().all()))
+
+    # 按更新时间排序
+    conversations.sort(key=lambda c: c.updated_at or c.created_at, reverse=True)
+
+    return [
+        {
+            "id": str(c.id),
+            "title": c.title or "新对话",
+            "model": c.model,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+            "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+            "message_count": c.message_count or 0,
+            "total_tokens": c.total_tokens or 0
+        }
+        for c in conversations
+    ]
+
+
 @router.get("/{conversation_id}")
 async def get_conversation(
     conversation_id: str,
@@ -148,59 +204,6 @@ async def update_conversation(
     if not success:
         raise HTTPException(status_code=404, detail="对话不存在")
     return {"success": True}
-
-
-@router.get("/search")
-async def search_conversations(
-    q: str,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
-):
-    """搜索对话（标题和内容）"""
-    if not q or len(q) < 2:
-        raise HTTPException(status_code=400, detail="搜索关键词至少需要2个字符")
-
-    import uuid as _uuid
-    user_uuid = _uuid.UUID(str(current_user.id))
-
-    # 搜索对话标题
-    title_query = select(Conversation).where(
-        Conversation.is_active == 1,
-        Conversation.user_id == user_uuid,
-        Conversation.title.ilike(f"%{q}%")
-    )
-
-    # 搜索消息内容，关联到对话
-    message_query = select(Conversation).join(
-        Message, Message.conversation_id == Conversation.id
-    ).where(
-        Conversation.is_active == 1,
-        Conversation.user_id == user_uuid,
-        Message.content.ilike(f"%{q}%")
-    ).distinct()
-
-    # 执行查询
-    title_result = await session.execute(title_query)
-    message_result = await session.execute(message_query)
-
-    # 合并结果（去重）
-    conversations = list(set(title_result.scalars().all()) | set(message_result.scalars().all()))
-
-    # 按更新时间排序
-    conversations.sort(key=lambda c: c.updated_at or c.created_at, reverse=True)
-
-    return [
-        {
-            "id": str(c.id),
-            "title": c.title or "新对话",
-            "model": c.model,
-            "created_at": c.created_at.isoformat() if c.created_at else None,
-            "updated_at": c.updated_at.isoformat() if c.updated_at else None,
-            "message_count": c.message_count or 0,
-            "total_tokens": c.total_tokens or 0
-        }
-        for c in conversations
-    ]
 
 
 @router.delete("/{conversation_id}")

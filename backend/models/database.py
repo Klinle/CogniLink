@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Integer, Float, JSON
+from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Integer, Float, JSON, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from pgvector.sqlalchemy import Vector
@@ -6,6 +6,9 @@ from datetime import datetime
 import uuid
 
 Base = declarative_base()
+
+# BGE-M3 嵌入维度；定维后 pgvector 才能建 HNSW 索引（与 embedding_service.EMBEDDING_DIM 一致）
+EMBEDDING_DIM = 1024
 
 class User(Base):
     __tablename__ = "users"
@@ -76,7 +79,7 @@ class DocumentChunk(Base):
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id"))
     content = Column(Text)
     chunk_index = Column(Integer)
-    embedding = Column(Vector)
+    embedding = Column(Vector(EMBEDDING_DIM))
     element_type = Column(String(50), nullable=True)    # 元素类型: Title/NarrativeText/Table/ListItem
     page_number = Column(Integer, nullable=True)         # 页码
     chunk_metadata = Column(JSON, nullable=True)         # 扩展元信息 (JSON)
@@ -129,7 +132,7 @@ class Memory(Base):
     category = Column(String(50), default="fact")
     importance = Column(Integer, default=5)
     source = Column(String(255))
-    embedding = Column(Vector)
+    embedding = Column(Vector(EMBEDDING_DIM))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     access_count = Column(Integer, default=0)
@@ -140,9 +143,13 @@ class Memory(Base):
 
 class MemorySetting(Base):
     __tablename__ = "memory_settings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "key", name="uq_memory_settings_user_key"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    key = Column(String(100), unique=True, nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)  # 按用户隔离；NULL 为历史遗留全局行
+    key = Column(String(100), nullable=False)
     value = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

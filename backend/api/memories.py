@@ -22,9 +22,17 @@ class MemorySettingsRequest(BaseModel):
     min_importance: int = 5
 
 
-async def get_memory_settings_from_db(session: AsyncSession) -> dict:
-    """Get memory settings from database"""
-    result = await session.execute(select(MemorySetting))
+def _parse_user_uuid(user_id: str):
+    import uuid as _uuid
+    return _uuid.UUID(str(user_id))
+
+
+async def get_memory_settings_from_db(session: AsyncSession, user_id: str) -> dict:
+    """Get memory settings from database (per-user)"""
+    user_uuid = _parse_user_uuid(user_id)
+    result = await session.execute(
+        select(MemorySetting).where(MemorySetting.user_id == user_uuid)
+    )
     settings = {s.key: s.value for s in result.scalars().all()}
 
     return {
@@ -35,8 +43,9 @@ async def get_memory_settings_from_db(session: AsyncSession) -> dict:
     }
 
 
-async def save_memory_settings_to_db(session: AsyncSession, settings: dict):
-    """Save memory settings to database"""
+async def save_memory_settings_to_db(session: AsyncSession, settings: dict, user_id: str):
+    """Save memory settings to database (per-user)"""
+    user_uuid = _parse_user_uuid(user_id)
     settings_map = {
         "auto_extract": str(settings.get("auto_extract", True)).lower(),
         "whitelist_topics": ",".join(settings.get("whitelist_topics", [])),
@@ -46,7 +55,10 @@ async def save_memory_settings_to_db(session: AsyncSession, settings: dict):
 
     for key, value in settings_map.items():
         result = await session.execute(
-            select(MemorySetting).where(MemorySetting.key == key)
+            select(MemorySetting).where(
+                MemorySetting.user_id == user_uuid,
+                MemorySetting.key == key,
+            )
         )
         setting = result.scalar_one_or_none()
 
@@ -54,7 +66,7 @@ async def save_memory_settings_to_db(session: AsyncSession, settings: dict):
             setting.value = value
             setting.updated_at = datetime.utcnow()
         else:
-            setting = MemorySetting(key=key, value=value)
+            setting = MemorySetting(user_id=user_uuid, key=key, value=value)
             session.add(setting)
 
     await session.commit()
@@ -213,17 +225,19 @@ async def extract_memories(
 
 @router.get("/settings")
 async def get_memory_settings(
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
     """Get memory extraction settings"""
-    settings = await get_memory_settings_from_db(session)
+    settings = await get_memory_settings_from_db(session, str(current_user.id))
     return settings
 
 
 @router.post("/settings")
 async def update_memory_settings(
     request: MemorySettingsRequest,
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
     """Update memory extraction settings"""
     settings = {
@@ -232,17 +246,18 @@ async def update_memory_settings(
         "blacklist_topics": request.blacklist_topics,
         "min_importance": request.min_importance
     }
-    await save_memory_settings_to_db(session, settings)
+    await save_memory_settings_to_db(session, settings, str(current_user.id))
     return {"success": True, "settings": settings}
 
 
 @router.get("/settings/check-topic")
 async def check_topic_allowed(
     topic: str,
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
     """Check if a topic is allowed based on whitelist/blacklist"""
-    settings = await get_memory_settings_from_db(session)
+    settings = await get_memory_settings_from_db(session, str(current_user.id))
 
     # Check blacklist first
     for blacklisted in settings["blacklist_topics"]:

@@ -3,7 +3,9 @@ Agent Tool Service - Provides tools for LLM agent to use
 Includes: Web search, calculator, datetime, etc.
 """
 
+import ast
 import json
+import math
 import re
 from typing import Dict, Any, List, Callable, Optional
 from datetime import datetime
@@ -141,37 +143,94 @@ class ToolsService:
             "timezone": timezone or "local"
         }
 
+    # AST 安全求值白名单（防止 eval 注入以及超大幂运算阻塞事件循环）
+    _CALC_MAX_EXPR_LENGTH = 200
+    _CALC_MAX_POW_EXPONENT = 128
+    _CALC_MAX_POW_BASE = 1e15
+
+    _CALC_FUNCS: Dict[str, Callable[[float], float]] = {
+        'sqrt': math.sqrt,
+        'sin': math.sin,
+        'cos': math.cos,
+        'tan': math.tan,
+        'log': math.log,
+        'log10': math.log10,
+        'exp': math.exp,
+        'abs': abs,
+        'round': round,
+    }
+    _CALC_NAMES: Dict[str, float] = {
+        'pi': math.pi,
+        'e': math.e,
+    }
+
+    def _safe_eval_node(self, node: ast.AST) -> float:
+        """递归求值 AST 节点，仅允许数字、四则运算、幂、取模和白名单函数"""
+        if isinstance(node, ast.Expression):
+            return self._safe_eval_node(node.body)
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, (int, float)):
+                return node.value
+            raise ValueError("Only numeric constants are allowed")
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            value = self._safe_eval_node(node.operand)
+            return value if isinstance(node.op, ast.UAdd) else -value
+        if isinstance(node, ast.BinOp):
+            left = self._safe_eval_node(node.left)
+            right = self._safe_eval_node(node.right)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.Mult):
+                return left * right
+            if isinstance(node.op, ast.Div):
+                return left / right
+            if isinstance(node.op, ast.FloorDiv):
+                return left // right
+            if isinstance(node.op, ast.Mod):
+                return left % right
+            if isinstance(node.op, ast.Pow):
+                # 限制幂运算规模，防止同步大数计算冻结事件循环
+                if abs(right) > self._CALC_MAX_POW_EXPONENT or abs(left) > self._CALC_MAX_POW_BASE:
+                    raise ValueError("Exponentiation operands too large")
+                return left ** right
+            raise ValueError("Unsupported operator")
+        if isinstance(node, ast.Call):
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id in self._CALC_FUNCS
+                and not node.keywords
+                and len(node.args) == 1
+            ):
+                return self._CALC_FUNCS[node.func.id](self._safe_eval_node(node.args[0]))
+            raise ValueError("Unsupported function call")
+        if isinstance(node, ast.Name):
+            if node.id in self._CALC_NAMES:
+                return self._CALC_NAMES[node.id]
+            raise ValueError(f"Unknown name: {node.id}")
+        raise ValueError("Unsupported expression")
+
     def _calculator(self, expression: str) -> Dict[str, Any]:
-        """Safe calculator - only allows basic math operations"""
-        # Whitelist of allowed characters
-        allowed_pattern = r'^[\d\+\-\*\/\(\)\.\s\^sinocstalgrpeq]+$'
+        """Safe calculator - AST-whitelisted math evaluation (no eval)"""
+        if len(expression) > self._CALC_MAX_EXPR_LENGTH:
+            return {"error": "Expression too long"}
+
+        allowed_pattern = r'^[\d\+\-\*\/\%\(\)\.\,\s\^sinocstalgrpeq0-9]+$'
         if not re.match(allowed_pattern, expression.lower()):
             return {"error": "Invalid characters in expression"}
 
         try:
             # Replace ^ with ** for power
             expr = expression.replace('^', '**')
-
-            # Basic math functions
-            safe_dict = {
-                'sqrt': lambda x: x ** 0.5,
-                'sin': lambda x: __import__('math').sin(x),
-                'cos': lambda x: __import__('math').cos(x),
-                'tan': lambda x: __import__('math').tan(x),
-                'log': lambda x: __import__('math').log(x),
-                'log10': lambda x: __import__('math').log10(x),
-                'exp': lambda x: __import__('math').exp(x),
-                'abs': abs,
-                'round': round,
-                'pi': __import__('math').pi,
-                'e': __import__('math').e,
-            }
-
-            result = eval(expr, {"__builtins__": {}}, safe_dict)
+            tree = ast.parse(expr, mode="eval")
+            result = self._safe_eval_node(tree)
             return {
                 "expression": expression,
                 "result": result
             }
+        except ZeroDivisionError:
+            return {"error": "Division by zero"}
         except Exception as e:
             return {"error": f"Calculation error: {str(e)}"}
 

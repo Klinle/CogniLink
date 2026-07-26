@@ -24,6 +24,20 @@ PDF_PARSE_TIMEOUT_SECONDS = 20
 PROCESSING_TIMEOUT_MINUTES = 30
 
 
+def _ensure_document_access(doc: Document, user: User) -> None:
+    """读取访问控制：所有者、共享文档或管理员，其余一律 403。
+
+    与 list_documents 的可见性规则保持一致：非管理员看不到被禁用（is_active=0）的共享文档。
+    """
+    if user.role == "admin":
+        return
+    if doc.owner_id == user.id:
+        return
+    if doc.visibility == "shared" and (doc.is_active is None or doc.is_active == 1):
+        return
+    raise HTTPException(403, "无权访问该文档")
+
+
 async def _reconcile_stuck_processing_documents() -> None:
     cutoff = datetime.utcnow() - timedelta(minutes=PROCESSING_TIMEOUT_MINUTES)
     async with async_session_maker() as session:
@@ -267,12 +281,71 @@ async def list_documents(
     ]
 
 
+from pydantic import BaseModel
+class KnowledgeBaseCreateSchema(BaseModel):
+    name: str
+    description: str = ""
+
+
+# 注意：/kb 必须注册在 /{document_id} 之前，否则会被路径参数路由遮蔽
+@router.get("/kb")
+async def list_knowledge_bases(
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """获取用户已创建的以及系统内置的分类知识库列表"""
+    from sqlalchemy import or_
+    stmt = select(KnowledgeBase).where(
+        or_(
+            KnowledgeBase.owner_id == current_user.id,
+            KnowledgeBase.owner_id.is_(None)
+        )
+    ).order_by(KnowledgeBase.created_at.desc())
+    res = await session.execute(stmt)
+    kbs = res.scalars().all()
+    return [
+        {
+            "id": str(kb.id),
+            "name": kb.name,
+            "description": kb.description or "",
+            "created_at": kb.created_at.isoformat(),
+            "owner_id": str(kb.owner_id) if kb.owner_id else None
+        }
+        for kb in kbs
+    ]
+
+
+@router.post("/kb")
+async def create_knowledge_base(
+    req: KnowledgeBaseCreateSchema,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """新建一个分类知识库"""
+    import uuid as _uuid
+    kb = KnowledgeBase(
+        id=_uuid.uuid4(),
+        name=req.name,
+        description=req.description,
+        owner_id=current_user.id
+    )
+    session.add(kb)
+    await session.commit()
+    return {
+        "id": str(kb.id),
+        "name": kb.name,
+        "description": kb.description,
+        "owner_id": str(kb.owner_id)
+    }
+
+
 @router.get("/{document_id}/content")
 async def get_document_content(
     document_id: str,
     start_page: int = 0,
     end_page: int = PDF_PAGES_PER_REQUEST,
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
     """Get document content (parsed text) with pagination support for PDFs"""
     from uuid import UUID
@@ -287,6 +360,8 @@ async def get_document_content(
 
     if not doc:
         raise HTTPException(404, "Document not found")
+
+    _ensure_document_access(doc, current_user)
 
     try:
         doc_info = {}
@@ -364,6 +439,7 @@ async def get_document_content(
 async def get_document_preview_info(
     document_id: str,
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
     from uuid import UUID
 
@@ -377,6 +453,8 @@ async def get_document_preview_info(
 
     if not doc:
         raise HTTPException(404, "Document not found")
+
+    _ensure_document_access(doc, current_user)
 
     if not os.path.exists(doc.file_path):
         raise HTTPException(404, "Document file not found")
@@ -399,6 +477,7 @@ async def get_document_preview_info(
 async def get_document_file(
     document_id: str,
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
     from uuid import UUID
 
@@ -412,6 +491,8 @@ async def get_document_file(
 
     if not doc:
         raise HTTPException(404, "Document not found")
+
+    _ensure_document_access(doc, current_user)
 
     if not os.path.exists(doc.file_path):
         raise HTTPException(404, "Document file not found")
@@ -436,17 +517,28 @@ async def get_document_file(
 
 
 @router.get("/{document_id}")
-async def get_document(document_id: str, session: AsyncSession = Depends(get_session)):
+async def get_document(
+    document_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
     """Get document details"""
     from uuid import UUID
 
+    try:
+        parsed_id = UUID(document_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid document_id")
+
     result = await session.execute(
-        select(Document).where(Document.id == UUID(document_id))
+        select(Document).where(Document.id == parsed_id)
     )
     doc = result.scalar_one_or_none()
 
     if not doc:
         raise HTTPException(404, "Document not found")
+
+    _ensure_document_access(doc, current_user)
 
     return {
         "id": str(doc.id),
@@ -459,7 +551,9 @@ async def get_document(document_id: str, session: AsyncSession = Depends(get_ses
 
 @router.get("/{document_id}/status")
 async def get_document_status(
-    document_id: str, session: AsyncSession = Depends(get_session)
+    document_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
     """Get document processing status with progress"""
     from uuid import UUID
@@ -474,6 +568,8 @@ async def get_document_status(
 
     if not doc:
         raise HTTPException(404, "Document not found")
+
+    _ensure_document_access(doc, current_user)
 
     # Get processing job if exists
     job = document_processor.get_job_by_document(str(doc.id))
@@ -595,6 +691,7 @@ async def reprocess_document(
     base_url: str = "",
     use_local_embedding: bool = False,
     session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ):
     """Reprocess a document with new parsing + chunking + embedding.
 
@@ -613,6 +710,10 @@ async def reprocess_document(
 
     if not doc:
         raise HTTPException(404, "Document not found")
+
+    # 重处理属于修改操作：仅文档所有者或管理员可执行
+    if doc.owner_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(403, "只有文档所有者或管理员可以重新处理文档")
 
     if not os.path.exists(doc.file_path):
         raise HTTPException(404, "Document file not found on disk")
@@ -692,56 +793,3 @@ async def search_documents(
     ]
 
 
-from pydantic import BaseModel
-class KnowledgeBaseCreateSchema(BaseModel):
-    name: str
-    description: str = ""
-
-@router.get("/kb")
-async def list_knowledge_bases(
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
-):
-    """获取用户已创建的以及系统内置的分类知识库列表"""
-    from sqlalchemy import or_
-    stmt = select(KnowledgeBase).where(
-        or_(
-            KnowledgeBase.owner_id == current_user.id,
-            KnowledgeBase.owner_id.is_(None)
-        )
-    ).order_by(KnowledgeBase.created_at.desc())
-    res = await session.execute(stmt)
-    kbs = res.scalars().all()
-    return [
-        {
-            "id": str(kb.id),
-            "name": kb.name,
-            "description": kb.description or "",
-            "created_at": kb.created_at.isoformat(),
-            "owner_id": str(kb.owner_id) if kb.owner_id else None
-        }
-        for kb in kbs
-    ]
-
-@router.post("/kb")
-async def create_knowledge_base(
-    req: KnowledgeBaseCreateSchema,
-    session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
-):
-    """新建一个分类知识库"""
-    import uuid
-    kb = KnowledgeBase(
-        id=uuid.uuid4(),
-        name=req.name,
-        description=req.description,
-        owner_id=current_user.id
-    )
-    session.add(kb)
-    await session.commit()
-    return {
-        "id": str(kb.id),
-        "name": kb.name,
-        "description": kb.description,
-        "owner_id": str(kb.owner_id)
-    }

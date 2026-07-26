@@ -97,7 +97,7 @@ Services are instantiated as module-level singletons (e.g., `llm_service = LLMSe
 |---------|---------------|
 | `llm_service` | Streaming chat via LiteLLM `acompletion`. Builds system prompt from RAG context + memory context + agent system prompt. Supports tool calling. |
 | `rag_service` | Vector similarity search on `document_chunks` using cosine distance. Annotates chunks with `[source: doc_name, page N]`. |
-| `embedding_service` | Embedding generation via direct OpenAI-compatible clients (NOT litellm). Provider routing: OpenAI / Alibaba / Zhipu / Moonshot / Ollama (local BGE-M3). |
+| `embedding_service` | Embedding generation via local Ollama BGE-M3 only (1024-dim, `EMBEDDING_DIM`). Provider params kept for interface compat but unused. Raises a clear error when Ollama is unreachable. |
 | `memory_service` | CRUD for memories + semantic search + auto-extraction from conversations via LLM with importance/whitelist/blacklist filtering. |
 | `conversation_service` | Conversation persistence with smart context window management: token counting (tiktoken), auto-summary compression after ~20 messages or 100K tokens, message dedup via `is_summarized` flag. |
 | `document_service` | Multi-format parsing with fallback chain for PDF (pymupdf4llm → pypdf → pymupdf → pdfplumber → ocrmac → RapidOCR). Semantic chunking via `unstructured` library. |
@@ -106,7 +106,7 @@ Services are instantiated as module-level singletons (e.g., `llm_service = LLMSe
 | `evaluation_service` | LLM-powered code evaluation + quiz scoring + dynamic exercise generation tailored to user weak points. Supports 6 exercise types: code, quiz, match, fill, arrange, judge. |
 | `knowledge_service` | Knowledge node CRUD, user proficiency tracking, PageRank computation, adaptive learning path recommendations. |
 | `knowledge_extraction_service` | Post-upload: LLM analyzes document chunks in batches → extracts key concepts → generates `KnowledgeNode` + `KnowledgeRelation` records + links chunks to nodes. |
-| `graph_service` | LangGraph `StateGraph` multi-agent workflow: Orchestrator (classifies user query into 1 of 6 CS domains) → RagBot (hybrid BM25 + vector + RRF retrieval) → Reviewer (domain-specific teaching style + RAG context → final answer). |
+| `graph_service` | RAG six-stage pipeline (`run_stream`, primary chat path): 1 memory load → 2 LLM query rewrite & split → 3 intent-tree classification (chitchat/knowledge_qa/practice_request/realtime_query + 6 CS domains + teaching style) → 4 ambiguity gate (asks clarifying question and short-circuits) → 5 parallel retrieval (multi-sub-query hybrid BM25+vector+RRF channel, web-search tool channel) → 6 prompt assembly + true streaming. Legacy LangGraph `StateGraph` (orchestrator → rag_bot) kept for `run()`. |
 | `agent_service` | CRUD for AI mentors (agents table). Three default mentor archetypes: humor_mentor, academic_mentor, coach_mentor — each with domain-aware system prompts covering all 6 CS categories. |
 | `lab_service` | Lab exercise CRUD, filtering by type/difficulty/node, user submission tracking. |
 | `profile_service` | Aggregated user learning stats: lighted nodes, pass rate, study duration, memory count, 6-dimension radar chart data. |
@@ -119,7 +119,7 @@ Services are instantiated as module-level singletons (e.g., `llm_service = LLMSe
 - **knowledge_bases** — logical groupings of documents and their extracted knowledge nodes
 - **documents** → **document_chunks** (with pgvector embedding + element_type + page_number + node_id FK)
 - **conversations** → **messages** (with token counting, summary compression, soft delete; linked to users and agents)
-- **memories** + **memory_settings** (auto-extract config: whitelist/blacklist/min_importance)
+- **memories** + **memory_settings** (per-user auto-extract config: whitelist/blacklist/min_importance; unique on (user_id, key))
 - **knowledge_nodes** → **knowledge_relations** (directed graph with pagerank_weight; 6 categories: programming, dsa, organization, os, network, database; source field: learning_path | extraction)
 - **user_knowledge_states** (proficiency, pagerank_score, is_lighted, study_duration per user per node)
 - **labs** → **user_lab_submissions** (exercises with test_cases, lab_type: code/quiz, difficulty; submissions with ai_feedback and score)
@@ -145,7 +145,8 @@ Services are instantiated as module-level singletons (e.g., `llm_service = LLMSe
 - All non-auth endpoints require `Authorization: Bearer <jwt_token>` header
 - Dependency chain: `get_current_user` (parses JWT, loads User) → `get_admin_user` (role check) or `get_teacher_or_admin_user`
 - Frontend stores token in `localStorage` under key `cognilink_token`; `getAuthHeaders()` reads it for every request
-- Default admin account: username `Kleinle`, password `123456`
+- Default admin account: username `Kleinle`, password from `ADMIN_INITIAL_PASSWORD` in backend/.env (defaults to `123456` for local dev; startup warns if unchanged)
+- Server refuses to start when `SECRET_KEY` is empty
 
 ### Chat Data Flow
 

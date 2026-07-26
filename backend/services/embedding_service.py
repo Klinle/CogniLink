@@ -1,22 +1,15 @@
-import litellm
 from typing import List, Optional
 
-class EmbeddingService:
-    # Provider base URLs for generic OpenAI clients
-    PROVIDER_BASE_URLS = {
-        "openai": "https://api.openai.com/v1",
-        "alibaba": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "zhipu": "https://open.bigmodel.cn/api/paas/v4",
-        "moonshot": "https://api.moonshot.cn/v1",
-    }
+# BGE-M3 输出维度，须与 models/database.py 中 Vector(EMBEDDING_DIM) 保持一致
+EMBEDDING_DIM = 1024
 
-    # Provider mapping to original model names
-    PROVIDER_MODELS = {
-        "openai": "text-embedding-3-small",
-        "alibaba": "text-embedding-v3",
-        "zhipu": "embedding-3",
-        "moonshot": "moonshot-embedding",
-    }
+
+class EmbeddingService:
+    """本地 Ollama BGE-M3 嵌入服务。
+
+    文档上传与检索必须使用同一嵌入模型（维度一致），因此当前固定走本地
+    Ollama。api_key / provider / base_url 参数仅保留接口兼容，实际不使用。
+    """
 
     # Local Ollama settings
     OLLAMA_BASE_URL = "http://localhost:11434"
@@ -30,51 +23,10 @@ class EmbeddingService:
         base_url: Optional[str] = None,
         use_local: bool = True
     ) -> List[List[float]]:
-        """Get embeddings for a list of texts.
-
-        固定使用本地 Ollama BGE-M3 模型，确保文档上传与检索的向量维度和模型一致。
-        api_key / provider / base_url 参数仅保留接口兼容，实际不使用。
-        """
-        # 始终使用本地 Ollama BGE-M3
+        """Get embeddings for a list of texts via local Ollama BGE-M3."""
         return await self._get_ollama_embeddings(
             texts, self.OLLAMA_BASE_URL, self.OLLAMA_EMBEDDING_MODEL
         )
-
-        # 以下云端嵌入代码已弃用，保留仅供参考（不会执行）
-        url = base_url if base_url else self.PROVIDER_BASE_URLS.get(provider)
-        model = self.PROVIDER_MODELS.get(provider, "text-embedding-3-small")
-
-        if provider == "zhipu":
-            # Zhipu requires its native SDK due to JWT auth
-            import asyncio
-            from zhipuai import ZhipuAI
-            
-            # Explicitly strip and cast api_key just in case it retains headers or proxy prefixes
-            clean_api_key = str(api_key).strip()
-            # If the user put 'Bearer ' via some proxy logic, strip it
-            if clean_api_key.lower().startswith("bearer "):
-                clean_api_key = clean_api_key[7:].strip()
-                
-            if not base_url or "bigmodel.cn" in base_url:
-                # Real Zhipu API
-                client = ZhipuAI(api_key=clean_api_key)
-                resp = await asyncio.to_thread(
-                    client.embeddings.create,
-                    model="embedding-3", # hardcoded fallback explicitly
-                    input=texts
-                )
-                return [item.embedding for item in resp.data]
-            else:
-                # Local Proxy (e.g. OneAPI / OpenCode which handles the dummy key)
-                from openai import AsyncOpenAI
-                client = AsyncOpenAI(api_key=api_key, base_url=base_url)
-                resp = await client.embeddings.create(model="embedding-3", input=texts)
-                return [item.embedding for item in resp.data]
-        else:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=api_key, base_url=url)
-            resp = await client.embeddings.create(model=model, input=texts)
-            return [item.embedding for item in resp.data]
 
     async def get_single_embedding(
         self,
@@ -112,22 +64,30 @@ class EmbeddingService:
         MAX_CONCURRENT = 10
         semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
-        async with aiohttp.ClientSession() as session:
-            async def _embed_one(text: str) -> List[float]:
-                async with semaphore:
-                    async with session.post(
-                        api_url,
-                        json={"model": model, "prompt": text}
-                    ) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            return data['embedding']
-                        else:
-                            error_text = await resp.text()
-                            raise Exception(f"Ollama embedding error: {error_text}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async def _embed_one(text: str) -> List[float]:
+                    async with semaphore:
+                        async with session.post(
+                            api_url,
+                            json={"model": model, "prompt": text}
+                        ) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                return data['embedding']
+                            else:
+                                error_text = await resp.text()
+                                raise RuntimeError(f"Ollama embedding error: {error_text}")
 
-            embeddings = await asyncio.gather(*[_embed_one(t) for t in texts])
+                embeddings = await asyncio.gather(*[_embed_one(t) for t in texts])
+        except aiohttp.ClientConnectorError as e:
+            raise RuntimeError(
+                f"无法连接本地 Ollama 服务（{base_url}）。"
+                "请确认已安装 Ollama 并创建 bge-m3 模型（见 CLAUDE.md 的 BGE-M3 部署步骤），"
+                "否则文档上传与 RAG 检索无法生成向量。"
+            ) from e
 
         return list(embeddings)
+
 
 embedding_service = EmbeddingService()

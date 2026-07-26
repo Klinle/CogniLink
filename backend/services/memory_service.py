@@ -53,9 +53,17 @@ class MemoryService:
         from sqlalchemy import select
         import json
 
-        # Check memory settings
-        from api.memories import get_memory_settings_from_db
-        memory_settings = await get_memory_settings_from_db(session)
+        # Check memory settings (per-user; without user_id fall back to defaults)
+        if user_id:
+            from api.memories import get_memory_settings_from_db
+            memory_settings = await get_memory_settings_from_db(session, user_id)
+        else:
+            memory_settings = {
+                "auto_extract": True,
+                "whitelist_topics": [],
+                "blacklist_topics": [],
+                "min_importance": 5,
+            }
 
         # If auto-extract is disabled, skip extraction
         if not memory_settings.get("auto_extract", True):

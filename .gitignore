@@ -79,6 +79,10 @@ Thumbs.db
 # ── 临时工具脚本（已完成使命） ────────
 backend/fix_admin.py
 
+# ── 本机专用（Claude Code 会话支持文件，含绝对路径/个人权限清单） ──
+.claude/
+backend/scratch/
+
 # ── 构建产物 ────────────────────────
 .vercel
 /out/

@@ -9,6 +9,11 @@ import {
   Bot,
   BookOpen,
   Brain,
+  PenLine,
+  GitBranch,
+  HelpCircle,
+  Wrench,
+  Sparkles,
 } from "lucide-react";
 
 /** 工作流步骤状态 */
@@ -20,11 +25,16 @@ export interface WorkflowStep {
   data?: Record<string, unknown>;
 }
 
-/** 节点图标映射 — 对应简化后的工作流（orchestrator → rag_bot → reviewer）*/
+/** 节点图标映射 — RAG 六阶段流水线（memory_loader → query_rewriter → intent_classifier → ambiguity_gate → rag_bot/tool_call → reviewer）*/
 const nodeIcons: Record<string, typeof Bot> = {
-  orchestrator: Bot,
+  memory_loader: Brain,
+  query_rewriter: PenLine,
+  intent_classifier: GitBranch,
+  ambiguity_gate: HelpCircle,
   rag_bot: BookOpen,
-  reviewer: Brain,
+  tool_call: Wrench,
+  reviewer: Sparkles,
+  orchestrator: Bot,
 };
 
 /** 工作流进度面板 */
@@ -36,7 +46,7 @@ export function WorkflowPanel({ steps }: { steps: WorkflowStep[] }) {
       <div className="flex items-center gap-2 mb-2.5">
         <Bot className="h-3.5 w-3.5 text-indigo-500" />
         <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-          多 Agent 协同工作流
+          RAG 智能流水线
         </span>
       </div>
       <div className="space-y-0">

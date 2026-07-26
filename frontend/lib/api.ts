@@ -137,7 +137,7 @@ export const labApi = {
   evaluateDynamic: async (params: {
     exercise: Record<string, unknown>;
     code?: string;
-    answers?: Record<string, number>;
+    answers?: Record<string, unknown>;
     node_id?: string;
     api_key?: string;
     model?: string;
@@ -561,5 +561,11 @@ export const collectionApi = {
     });
     if (!response.ok) throw new Error("校验收藏状态失败");
     return response.json();
+  },
+  uncollectExercise: async (title: string) => {
+    const collections: { id: string; title: string }[] = await collectionApi.listCollections();
+    const target = collections.find((c) => c.title === title);
+    if (!target) return { success: true };
+    return collectionApi.deleteCollection(target.id);
   },
 };

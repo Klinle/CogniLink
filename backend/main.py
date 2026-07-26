@@ -13,10 +13,16 @@ from api.profile import router as profile_router
 from api.admin import router as admin_router
 from api.collections import router as collections_router
 from core.database import init_db
+from core.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    if not settings.SECRET_KEY:
+        raise RuntimeError(
+            "SECRET_KEY is empty. Set SECRET_KEY in backend/.env before starting the server, "
+            "otherwise JWT tokens could be forged."
+        )
     await init_db()
     try:
         from seed_data import seed_all_data
