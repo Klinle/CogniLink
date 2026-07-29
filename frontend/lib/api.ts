@@ -569,3 +569,84 @@ export const collectionApi = {
     return collectionApi.deleteCollection(target.id);
   },
 };
+
+export const onboardingApi = {
+  getStatus: async () => {
+    const response = await fetch(`${API_BASE_URL}/api/onboarding/status`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error("获取引导状态失败");
+    return response.json();
+  },
+  complete: async (skipped: boolean) => {
+    const response = await fetch(`${API_BASE_URL}/api/onboarding/complete`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ skipped }),
+    });
+    if (!response.ok) throw new Error("更新引导状态失败");
+    return response.json();
+  },
+  getQuestions: async (domain: string) => {
+    const response = await fetch(
+      `${API_BASE_URL}/api/onboarding/questions?domain=${encodeURIComponent(domain)}`,
+      { headers: getAuthHeaders() },
+    );
+    if (!response.ok) throw new Error("获取诊断题目失败");
+    return response.json();
+  },
+  diagnose: async (domain: string, results: { lab_id: string; correct: boolean }[]) => {
+    const response = await fetch(`${API_BASE_URL}/api/onboarding/diagnose`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ domain, results }),
+    });
+    if (!response.ok) throw new Error("提交诊断结果失败");
+    return response.json();
+  },
+};
+
+export const reviewApi = {
+  getToday: async () => {
+    const response = await fetch(`${API_BASE_URL}/api/reviews/today`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error("获取今日复习队列失败");
+    return response.json();
+  },
+  listAll: async (params?: { state?: string; category?: string }) => {
+    const search = new URLSearchParams();
+    if (params?.state) search.append("state", params.state);
+    if (params?.category) search.append("category", params.category);
+    const qs = search.toString();
+    const response = await fetch(`${API_BASE_URL}/api/reviews${qs ? `?${qs}` : ""}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error("获取错题本失败");
+    return response.json();
+  },
+  answer: async (itemId: string, correct: boolean, quality?: number) => {
+    const response = await fetch(`${API_BASE_URL}/api/reviews/${itemId}/answer`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ correct, quality }),
+    });
+    if (!response.ok) throw new Error("提交复习结果失败");
+    return response.json();
+  },
+  getStats: async () => {
+    const response = await fetch(`${API_BASE_URL}/api/reviews/stats`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error("获取复习统计失败");
+    return response.json();
+  },
+  remove: async (itemId: string) => {
+    const response = await fetch(`${API_BASE_URL}/api/reviews/${itemId}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error("移除错题失败");
+    return response.json();
+  },
+};

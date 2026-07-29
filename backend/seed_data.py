@@ -133,8 +133,10 @@ async def seed_all_data():
         else:
             print("[Seed] SuperAdmin 'Kleinle' already exists. Skip.")
 
-        # 1. 若知识节点已注入则跳过后续（以 Python 概述节点为标志）
+        # 1. 若知识节点已注入则跳过后续（以 Python 概述节点为标志）；诊断题库独立幂等补种
         if (await session.execute(select(KnowledgeNode).where(KnowledgeNode.code == "PY_INTRO"))).scalars().first() is not None:
+            from seed_diagnostic import seed_diagnostic_labs
+            await seed_diagnostic_labs(session)
             print("[Seed] Python 核心知识节点已存在，跳过注入。")
             return
 
@@ -292,6 +294,10 @@ async def seed_all_data():
         session.add_all(labs)
         await session.commit()
         print(f"[Seed] 知识节点与练习数据注入成功！节点 {len(nodes)} / Lab {len(labs)}")
+
+        # 5. 诊断题库（依赖节点已入库）
+        from seed_diagnostic import seed_diagnostic_labs
+        await seed_diagnostic_labs(session)
 
 
 if __name__ == "__main__":

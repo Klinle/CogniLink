@@ -1,7 +1,7 @@
 """实验服务 — Lab CRUD 与提交记录管理"""
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -18,9 +18,15 @@ class LabService:
         lab_type: Optional[str] = None,
         node_id: Optional[str] = None,
         difficulty: Optional[str] = None,
+        include_diagnostic: bool = False,
     ) -> list:
-        """获取 Lab 列表（可按类型/节点/难度筛选）"""
+        """获取 Lab 列表（可按类型/节点/难度筛选）
+
+        默认排除 tag='diagnostic' 的诊断题，避免污染练习题库列表。
+        """
         stmt = select(Lab)
+        if not include_diagnostic:
+            stmt = stmt.where(or_(Lab.tag.is_(None), Lab.tag != "diagnostic"))
         if lab_type:
             stmt = stmt.where(Lab.lab_type == lab_type)
         if node_id:
@@ -63,6 +69,8 @@ class LabService:
             "difficulty": lab.difficulty,
             "lab_type": lab.lab_type,
             "node_id": str(lab.node_id) if lab.node_id else None,
+            "detailed_explanation": lab.detailed_explanation,
+            "tag": lab.tag,
         }
 
     async def create_submission(

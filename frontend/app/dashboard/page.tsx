@@ -8,7 +8,8 @@ import UserLayout from "@/components/user-layout";
 import XpProgressBar from "@/components/xp-progress-bar";
 import SkillTree from "@/components/skill-tree";
 import StudyPanel from "@/components/study-panel";
-import { knowledgeApi, profileApi } from "@/lib/api";
+import { knowledgeApi, onboardingApi, profileApi } from "@/lib/api";
+import ReviewTodayCard from "@/components/review-today-card";
 import { useChatAssistantStore } from "@/stores/chat-assistant";
 import type { KnowledgeNode, RecommendedNode, ProfileStats, GraphRelation, RadarData, KnowledgeBase } from "@/types";
 import { CATEGORY_COLORS } from "@/components/skill-node";
@@ -48,6 +49,9 @@ export default function DashboardPage() {
   const hour = new Date().getHours();
   const greeting = hour < 6 ? "夜深了" : hour < 12 ? "早上好" : hour < 14 ? "中午好" : hour < 18 ? "下午好" : "晚上好";
 
+  // 引导状态：0 未完成（重定向向导）/ 1 已跳过（显示补做入口）/ 2 已诊断
+  const [onboardingState, setOnboardingState] = useState<number | null>(null);
+
   useEffect(() => {
     setMounted(true);
     if (typeof window !== "undefined") {
@@ -57,6 +61,15 @@ export default function DashboardPage() {
         return;
       }
       setNickname(localStorage.getItem("cognilink_user_nickname") || "学生");
+      onboardingApi
+        .getStatus()
+        .then((res: { onboarding_completed: number }) => {
+          setOnboardingState(res.onboarding_completed);
+          if (res.onboarding_completed === 0) {
+            router.replace("/onboarding");
+          }
+        })
+        .catch((e) => console.error("Failed to load onboarding status:", e));
     }
   }, [router]);
 
@@ -140,7 +153,7 @@ export default function DashboardPage() {
                 <Sparkles className="h-6 w-6 text-amber-500" />
                 {greeting}，{nickname}
               </h1>
-              <p className="text-xs font-semibold text-zinc-550 dark:text-zinc-400 mt-1.5 ml-8.5">
+              <p className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 mt-1.5 ml-8.5">
                 欢迎回到 Python 经典游戏实训大本营 — 点亮蜂巢，解锁技能
               </p>
             </div>
@@ -148,7 +161,7 @@ export default function DashboardPage() {
             <div className="flex items-center gap-3 font-sans">
               {/* 知识库分类选择框 */}
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-zinc-650 font-bold">当前学习:</span>
+                <span className="text-xs text-zinc-600 font-bold">当前学习:</span>
                 <select
                   value={activeKbId}
                   onChange={(e) => setActiveKbId(e.target.value)}
@@ -220,10 +233,10 @@ export default function DashboardPage() {
                       <X className="h-4.5 w-4.5" />
                     </button>
                   </div>
-                  <p className="text-xs font-bold text-zinc-550 dark:text-zinc-400 leading-relaxed">
+                  <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 leading-relaxed">
                     {selectedNode.description}
                   </p>
-                  <div className="flex items-center justify-between text-[10px] font-bold text-zinc-450 dark:text-zinc-500 border-t-2 border-dashed border-black/10 pt-2.5">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 dark:text-zinc-500 border-t-2 border-dashed border-black/10 pt-2.5">
                     <span>熟练度: {Math.round(selectedNode.proficiency)}%</span>
                     <span>学习时间: {(selectedNode.study_duration / 60).toFixed(1)} 小时</span>
                   </div>
@@ -245,8 +258,23 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* 右侧：今日推荐 + Quiz + 雷达图 */}
-            <div className="lg:w-80 shrink-0 overflow-y-auto p-4 md:px-4 md:py-4 border-t lg:border-t-0 lg:border-l-2 lg:border-black border-dashed border-black/10">
+            {/* 右侧：今日复习 + 诊断补做 + 今日推荐 + Quiz + 雷达图 */}
+            <div className="lg:w-80 shrink-0 overflow-y-auto p-4 md:px-4 md:py-4 border-t lg:border-t-0 lg:border-l-2 lg:border-black border-dashed border-black/10 flex flex-col gap-5">
+              {onboardingState === 1 && (
+                <Link
+                  href="/onboarding"
+                  className="block bg-amber-100 dark:bg-amber-700/40 border-2 border-black rounded-3xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all"
+                >
+                  <h3 className="text-xs font-black text-black dark:text-white mb-1 flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-amber-500" />
+                    完成学习力诊断
+                  </h3>
+                  <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+                    10 道题初始化你的知识画像，让推荐和出题更懂你。
+                  </p>
+                </Link>
+              )}
+              <ReviewTodayCard />
               <StudyPanel
                 recommendedNodes={recommends}
                 radarData={radar}

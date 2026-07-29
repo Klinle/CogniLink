@@ -55,7 +55,7 @@ export default function XpProgressBar({ stats, nickname }: XpProgressBarProps) {
 
       {/* 经验值进度条 */}
       <div className="flex-1 min-w-[200px] font-bold">
-        <div className="flex items-center justify-between text-xs text-zinc-650 dark:text-zinc-400 mb-1.5">
+        <div className="flex items-center justify-between text-xs text-zinc-600 dark:text-zinc-400 mb-1.5">
           <span className="flex items-center gap-1.5">
             <Zap className="h-4.5 w-4.5 text-amber-500 animate-pulse" />
             经验值 (点亮节点升级)

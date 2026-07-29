@@ -904,6 +904,7 @@ class GraphService:
 
         # ── 阶段 5：多通道并行检索 ──
         rag_context = ""
+        rag_sources: list = []
         tool_context = ""
         should_rag = bool(use_rag and session and intent != "chitchat")
         should_tool = bool(use_tools and intent_info.get("needs_web_search"))
@@ -919,9 +920,9 @@ class GraphService:
         if should_rag or should_tool:
             retrieval_domain = domain if domain in DOMAINS else None
 
-            async def _rag_channel() -> str:
+            async def _rag_channel() -> dict:
                 try:
-                    return await rag_service.get_context_for_queries(
+                    return await rag_service.get_context_and_sources_for_queries(
                         sub_queries or [rewritten_query],
                         api_key,
                         session,
@@ -929,10 +930,10 @@ class GraphService:
                         use_local=True,
                         user_id=user_id,
                         domain=retrieval_domain,
-                    ) or ""
+                    ) or {"context": "", "sources": []}
                 except Exception as e:
                     print(f"[RagChannel] 检索失败: {type(e).__name__}: {e}")
-                    return ""
+                    return {"context": "", "sources": []}
 
             async def _tool_channel() -> str:
                 try:
@@ -953,7 +954,9 @@ class GraphService:
 
             idx = 0
             if should_rag:
-                rag_context = results[idx]
+                rag_result = results[idx] or {}
+                rag_context = rag_result.get("context", "")
+                rag_sources = rag_result.get("sources", [])
                 idx += 1
                 yield self._status_event(
                     "rag_bot", "done",
@@ -961,6 +964,7 @@ class GraphService:
                         "sub_query_count": len(sub_queries),
                         "context_chars": len(rag_context),
                         "hit": bool(rag_context),
+                        "sources": rag_sources,
                     },
                 )
             if should_tool:

@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Menu,
   User,
+  RotateCcw,
 } from "lucide-react";
 import { useChatAssistantStore } from "@/stores/chat-assistant";
 
@@ -93,6 +94,7 @@ export default function UserLayout({ children, activePath }: UserLayoutProps) {
     { name: "学习主脑", href: "/dashboard", icon: Grid3X3 },
     { name: "知识图谱", href: "/graph", icon: Network },
     { name: "在线练习", href: "/practice", icon: Award },
+    { name: "错题复习", href: "/review", icon: RotateCcw },
     { name: "学习画像", href: "/profile", icon: Activity },
     { name: "记忆系统", href: "/memories", icon: Brain },
   ];
@@ -133,7 +135,7 @@ export default function UserLayout({ children, activePath }: UserLayoutProps) {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all border-2 ${
                   isActive
                     ? "bg-amber-100 dark:bg-zinc-800 border-black text-black dark:text-amber-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                    : "border-transparent text-zinc-550 dark:text-zinc-400 hover:border-black/25 hover:text-black dark:hover:text-white"
+                    : "border-transparent text-zinc-500 dark:text-zinc-400 hover:border-black/25 hover:text-black dark:hover:text-white"
                 }`}
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -190,7 +192,7 @@ export default function UserLayout({ children, activePath }: UserLayoutProps) {
                       className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl text-xs font-black transition-all border-2 ${
                         isActive
                           ? "bg-amber-100 border-black text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                          : "border-transparent text-zinc-550 dark:text-zinc-400 hover:bg-zinc-100/50"
+                          : "border-transparent text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100/50"
                       }`}
                     >
                       <Icon className={`h-5 w-5 ${isActive ? "text-amber-600" : "text-zinc-400"}`} />

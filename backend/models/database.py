@@ -18,6 +18,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     role = Column(String(50), default="student")  # student, teacher, admin
     nickname = Column(String(100), nullable=True)
+    onboarding_completed = Column(Integer, default=0)  # 0: 未完成, 1: 已跳过（引导闭合，未诊断）, 2: 已完成诊断
     created_at = Column(DateTime, default=datetime.utcnow)
 
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
@@ -210,6 +211,7 @@ class Lab(Base):
     node_id = Column(UUID(as_uuid=True), ForeignKey("knowledge_nodes.id"), nullable=True)
     difficulty = Column(String(20), default="medium")  # easy, medium, hard
     lab_type = Column(String(20), default="code")  # code, quiz
+    tag = Column(String(30), nullable=True)  # diagnostic: 诊断题库预置题；NULL: 常规题
     detailed_explanation = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -232,6 +234,55 @@ class UserLabSubmission(Base):
 
     user = relationship("User", back_populates="submissions")
     lab = relationship("Lab", back_populates="submissions")
+
+
+class UserReviewItem(Base):
+    """错题复习队列条目（SM-2 简化间隔重复调度）。
+
+    题目以快照（content/answer/explanation）存储，原题删除或修改不影响复习。
+    同一用户同一题（dedup_key）未毕业时唯一，重复答错仅累计 wrong_count 并重置调度。
+    """
+
+    __tablename__ = "user_review_items"
+    __table_args__ = (
+        UniqueConstraint("user_id", "dedup_key", name="uq_user_review_items_user_dedup"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    source_type = Column(String(20), nullable=False, default="lab")  # lab, dynamic, collection, flashcard
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id", ondelete="SET NULL"), nullable=True)
+    node_id = Column(UUID(as_uuid=True), ForeignKey("knowledge_nodes.id", ondelete="SET NULL"), nullable=True)
+    dedup_key = Column(String(64), nullable=False)  # lab:{lab_id} 或题目内容哈希
+    title = Column(String(255), nullable=False)
+    exercise_type = Column(String(50), nullable=False, default="quiz")  # code, quiz, match, fill, arrange, judge
+    content = Column(JSON, nullable=False)  # 题目快照（test_cases 等渲染所需全部内容）
+    answer = Column(JSON, nullable=True)  # 参考答案快照
+    explanation = Column(Text, nullable=True)  # 解析快照
+    wrong_count = Column(Integer, default=1)  # 累计答错次数
+    success_streak = Column(Integer, default=0)  # 连续答对次数（3 次毕业）
+    ease_factor = Column(Float, default=2.5)  # SM-2 难度系数
+    interval_days = Column(Integer, default=0)  # 当前复习间隔（天）
+    due_at = Column(DateTime, default=datetime.utcnow)  # 下次到期时间
+    last_reviewed_at = Column(DateTime, nullable=True)
+    state = Column(String(20), default="learning")  # learning, review, graduated
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    lab = relationship("Lab")
+    node = relationship("KnowledgeNode")
+
+
+class UserReviewLog(Base):
+    """复习作答流水（完成率统计与埋点数据源，保留轻量字段）"""
+
+    __tablename__ = "user_review_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    item_id = Column(UUID(as_uuid=True), ForeignKey("user_review_items.id", ondelete="CASCADE"), nullable=False)
+    correct = Column(Integer, nullable=False)  # 1 答对 / 0 答错
+    reviewed_at = Column(DateTime, default=datetime.utcnow)
 
 
 class UserCollectionExercise(Base):

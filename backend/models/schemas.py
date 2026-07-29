@@ -149,3 +149,45 @@ class CollectionExerciseResponse(BaseModel):
     explanation: Optional[str] = None
     created_at: datetime
 
+
+class ReviewAnswerRequest(BaseModel):
+    """复习作答：correct 为客观判定结果；quality 显式传入时（闪卡自评 5/3/1）优先"""
+    correct: bool
+    quality: Optional[int] = None
+
+
+class ReviewItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    source_type: str
+    lab_id: Optional[UUID] = None
+    node_id: Optional[UUID] = None
+    title: str
+    exercise_type: str
+    content: Any
+    answer: Any = None
+    explanation: Optional[str] = None
+    wrong_count: int
+    success_streak: int
+    interval_days: int
+    state: str
+    due_at: Optional[datetime] = None
+    last_reviewed_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class OnboardingCompleteRequest(BaseModel):
+    """跳过引导（skipped=True 时 onboarding_completed 置 1，诊断完成由 diagnose 置 2）"""
+    skipped: bool = True
+
+
+class DiagnoseResultItem(BaseModel):
+    lab_id: str
+    correct: bool
+
+
+class OnboardingDiagnoseRequest(BaseModel):
+    """诊断答卷：客观题由前端 exercise-renderer 判分后仅上报对错"""
+    domain: str
+    results: List[DiagnoseResultItem]
+

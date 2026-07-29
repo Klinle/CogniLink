@@ -18,8 +18,55 @@ from models.schemas import (
 from services.lab_service import lab_service
 from services.evaluation_service import evaluation_service
 from services.knowledge_service import knowledge_service
+from services.review_service import review_service
 
 router = APIRouter(prefix="/api/labs", tags=["labs"])
+
+
+def _is_failed(lab_type: str, result: dict) -> bool:
+    """未通过判定：客观题任一小题答错（score<100），code 题低于 60 分。
+
+    LLM/接口异常（status=error）不算答错，不入复习队列。
+    """
+    if result.get("status") == "error":
+        return False
+    score = result.get("score", 0)
+    return score < 60 if lab_type == "code" else score < 100
+
+
+async def _enqueue_review_on_failure(
+    session: AsyncSession,
+    user_id: str,
+    lab_type: str,
+    result: dict,
+    *,
+    title: str,
+    content: dict,
+    answer=None,
+    explanation=None,
+    source_type: str,
+    lab_id: str = None,
+    node_id: str = None,
+) -> bool:
+    """答错自动入复习队列；异常静默（不影响评测主流程）。返回是否已入队。"""
+    try:
+        if _is_failed(lab_type, result):
+            await review_service.enqueue_wrong_answer(
+                session,
+                user_id,
+                title=title,
+                exercise_type=lab_type,
+                content=content,
+                answer=answer,
+                explanation=explanation,
+                source_type=source_type,
+                lab_id=lab_id,
+                node_id=node_id,
+            )
+            return True
+    except Exception as e:
+        print(f"[Review Enqueue Error] {type(e).__name__}: {e}")
+    return False
 
 
 @router.get("")
@@ -256,10 +303,12 @@ async def evaluate_dynamic(
     exercise = request.exercise
     lab_type = exercise.get("lab_type", "code")
 
-    if lab_type == "quiz":
+    if lab_type in evaluation_service.OBJECTIVE_LAB_TYPES:
         test_cases = exercise.get("test_cases", {})
         user_answers = request.answers or {}
-        result = evaluation_service.evaluate_quiz_submission(test_cases, user_answers)
+        result = evaluation_service.evaluate_objective_submission(
+            lab_type, test_cases, user_answers
+        )
     else:
         result = await evaluation_service.evaluate_code_submission(
             title=exercise.get("title", ""),
@@ -287,12 +336,28 @@ async def evaluate_dynamic(
         except Exception as e:
             print(f"[Knowledge Link Error] {e}")
 
+    # 未通过自动进入错题复习队列（快照自请求中的题目 JSON）；
+    # 客观题空答卷视为未作答，不计入错题
+    review_enqueued = False
+    attempted = bool(request.answers) or lab_type not in evaluation_service.OBJECTIVE_LAB_TYPES
+    if attempted:
+        review_enqueued = await _enqueue_review_on_failure(
+            session, str(current_user.id), lab_type, result,
+            title=exercise.get("title", "动态练习"),
+            content=exercise.get("test_cases") or {},
+            answer=exercise.get("answer"),
+            explanation=exercise.get("detailed_explanation") or exercise.get("explanation"),
+            source_type="dynamic",
+            node_id=request.node_id,
+        )
+
     return {
         "status": result.get("status", "error"),
         "score": result.get("score", 0),
         "feedback": result.get("feedback", ""),
         "evaluation_result": result,
         "knowledge": knowledge_result,
+        "review_enqueued": review_enqueued,
     }
 
 
@@ -338,11 +403,13 @@ async def submit_lab(
     )
 
     # Evaluate based on lab_type
-    if lab.get("lab_type") == "quiz":
-        # Quiz: program scoring
+    if lab.get("lab_type") in evaluation_service.OBJECTIVE_LAB_TYPES:
+        # 客观题：服务端程序判分
         test_cases = lab.get("test_cases", {})
         user_answers = request.answers or {}
-        result = evaluation_service.evaluate_quiz_submission(test_cases, user_answers)
+        result = evaluation_service.evaluate_objective_submission(
+            lab.get("lab_type"), test_cases, user_answers
+        )
     else:
         # Code: LLM evaluation
         result = await evaluation_service.evaluate_code_submission(
@@ -381,6 +448,21 @@ async def submit_lab(
         except Exception as e:
             print(f"[Knowledge Link Error] {e}")
 
+    # 未通过自动进入错题复习队列（按 lab_id 去重）；客观题空答卷视为未作答
+    review_enqueued = False
+    submit_lab_type = lab.get("lab_type") or "code"
+    attempted = bool(request.answers) or submit_lab_type not in evaluation_service.OBJECTIVE_LAB_TYPES
+    if attempted:
+        review_enqueued = await _enqueue_review_on_failure(
+            session, str(current_user.id), submit_lab_type, result,
+            title=lab.get("title", "未命名题目"),
+            content=lab.get("test_cases") or {},
+            explanation=lab.get("detailed_explanation"),
+            source_type="lab",
+            lab_id=str(parsed_id),
+            node_id=lab.get("node_id"),
+        )
+
     return {
         "id": str(submission.id),
         "status": result.get("status", "error"),
@@ -388,6 +470,7 @@ async def submit_lab(
         "feedback": result.get("feedback", ""),
         "evaluation_result": result,
         "knowledge": knowledge_result,
+        "review_enqueued": review_enqueued,
     }
 
 

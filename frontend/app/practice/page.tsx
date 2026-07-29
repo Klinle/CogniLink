@@ -25,16 +25,6 @@ import { cn } from "@/lib/utils";
 type ExerciseMode = "system" | "dynamic" | "collection";
 type TabMode = "code" | "quiz" | "match" | "arrange" | "fill";
 
-// 单选题结构（与 study-panel 保持一致）
-interface QuizQuestion {
-  id?: string;
-  text?: string;
-  question?: string;
-  options?: string[];
-  answer?: number;
-  explanation?: string;
-}
-
 // 评测结果类型
 interface EvalResult {
   status: string;
@@ -316,26 +306,109 @@ function PracticeContent() {
     }
   };
 
+  // 渲染器单卡答案 -> 服务端判分契约（quiz: {qId:idx} / match: {matches} / arrange: {order} / fill: {blanks}）
+  const toServerAnswers = (
+    labType: string | undefined,
+    cardAnswers?: {
+      quizAnswers?: Record<string, number>;
+      matches?: Record<string, string>;
+      originalIndices?: number[];
+      fillInputs?: string[];
+    },
+  ): Record<string, unknown> => {
+    if (!cardAnswers) return {};
+    switch (labType) {
+      case "match":
+        return { matches: cardAnswers.matches || {} };
+      case "arrange":
+        return { order: cardAnswers.originalIndices || [] };
+      case "fill":
+        return { blanks: cardAnswers.fillInputs || [] };
+      default:
+        return cardAnswers.quizAnswers || {};
+    }
+  };
+
+  type RendererCardAnswers = {
+    quizAnswers?: Record<string, number>;
+    matches?: Record<string, string>;
+    originalIndices?: number[];
+    fillInputs?: string[];
+  };
+
+  // 是否有实质作答痕迹（未浏览/未作答的卡不提交，避免被误判为 0 分入错题队列）
+  const hasAttempt = (labType: string | undefined, a?: RendererCardAnswers): boolean => {
+    if (!a) return false;
+    switch (labType) {
+      case "match":
+        return Object.keys(a.matches || {}).length > 0;
+      case "arrange":
+        return (a.originalIndices || []).length > 0;
+      case "fill":
+        return (a.fillInputs || []).some((s) => (s || "").trim() !== "");
+      default:
+        return Object.keys(a.quizAnswers || {}).length > 0;
+    }
+  };
+
   // 提交概念题（选择/排序/连线/填空）评测
-  const handleRendererSubmit = async (answers: Record<string, unknown>) => {
+  // 渲染器一次报告所有浏览过的卡片；对每张有作答的卡独立评测：
+  // 题库题走 /labs/{id}/submit（判分+点亮+错题入队+提交历史一步到位），动态题走 /evaluate-dynamic
+  const handleRendererSubmit = async (result: {
+    score: number;
+    passed: boolean;
+    answers: Record<string, RendererCardAnswers>;
+  }) => {
     if (!selectedLab) return;
     setSubmitting(true);
     setEvalResult(null);
     try {
       const activeModel = SUPPORTED_MODELS.find((m) => m.id === model);
-      const res = await labApi.evaluateDynamic({
-        exercise: selectedLab as unknown as Record<string, unknown>,
-        answers,
-        node_id: selectedLab.node_id,
-        api_key: apiKey,
-        model: model,
-        base_url: activeModel?.provider ? baseUrls[activeModel.provider] : undefined,
-      });
+      const baseUrlForModel = activeModel?.provider ? baseUrls[activeModel.provider] : undefined;
+      const cardPool: Lab[] = exerciseMode === "system" ? labs : selectedLab ? [selectedLab] : [];
 
-      setEvalResult(res);
+      let lastRes: EvalResult | null = null;
+      let evaluated = 0;
+      for (const [cardId, cardAnswers] of Object.entries(result.answers)) {
+        const card =
+          cardId === selectedLab.id
+            ? selectedLab
+            : cardPool.find((l) => l.id === cardId);
+        if (!card || !hasAttempt(card.lab_type, cardAnswers)) continue;
 
-      if (res.score >= 60 && selectedLab.node_id) {
-        await reportDynamicKnowledgeLighted(selectedLab, answers);
+        const serverAnswers = toServerAnswers(card.lab_type, cardAnswers);
+        let res: EvalResult;
+        if (String(card.id).startsWith("dynamic")) {
+          res = await labApi.evaluateDynamic({
+            exercise: card as unknown as Record<string, unknown>,
+            answers: serverAnswers,
+            node_id: card.node_id,
+            api_key: apiKey,
+            model: model,
+            base_url: baseUrlForModel,
+          });
+        } else {
+          res = await labApi.submitLab(
+            card.id,
+            "",
+            apiKey,
+            model,
+            baseUrlForModel,
+            serverAnswers as Record<string, number>,
+          );
+        }
+        evaluated += 1;
+        if (card.id === selectedLab.id || lastRes === null) {
+          lastRes = res;
+        }
+      }
+
+      if (lastRes) {
+        setEvalResult(
+          evaluated > 1
+            ? { ...lastRes, feedback: `${lastRes.feedback || ""}（本次共评测 ${evaluated} 张卡片）` }
+            : lastRes,
+        );
       }
     } catch (e) {
       console.error("Failed to evaluate concept exercise:", e);
@@ -349,31 +422,6 @@ function PracticeContent() {
     }
   };
 
-  const reportDynamicKnowledgeLighted = async (lab: Lab, answers: Record<string, unknown>) => {
-    if (lab.lab_type === "quiz") {
-      try {
-        const labData = lab as unknown as {
-          test_cases?: { questions?: QuizQuestion[] };
-          questions?: QuizQuestion[];
-        };
-        const questionItem = (labData.test_cases?.questions?.[0] || labData.questions?.[0] || lab) as QuizQuestion;
-        const singleAnswer = { [questionItem.id || "0"]: answers[questionItem.id || "0"] };
-        const activeModel = SUPPORTED_MODELS.find((m) => m.id === model);
-
-        await labApi.submitLab(
-          lab.id,
-          "",
-          apiKey,
-          model,
-          activeModel?.provider ? baseUrls[activeModel.provider] : undefined,
-          singleAnswer as Record<string, number>,
-        );
-      } catch (e) {
-        console.error("Failed to submit dynamic progress:", e);
-      }
-    }
-  };
-
   return (
     <UserLayout activePath="/practice">
       {/* 羊皮纸米黄背景，细方格格纹 */}
@@ -384,7 +432,7 @@ function PracticeContent() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-black tracking-tight text-black dark:text-white">在线练习</h1>
-              <p className="text-sm font-semibold text-zinc-550 dark:text-zinc-400 mt-1">
+              <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 mt-1">
                 点击内置题库或呼叫 AI 自动出题，在实战解题中积累经验点亮星盘。
               </p>
             </div>
@@ -396,7 +444,7 @@ function PracticeContent() {
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all border-2 ${
                   exerciseMode === "system"
                     ? "bg-amber-100 dark:bg-zinc-700 border-black text-black dark:text-amber-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                    : "border-transparent text-zinc-550 dark:text-zinc-400 hover:text-black"
+                    : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-black"
                 }`}
               >
                 <Grid3X3 className="h-3.5 w-3.5" />
@@ -407,7 +455,7 @@ function PracticeContent() {
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all border-2 ${
                   exerciseMode === "dynamic"
                     ? "bg-amber-100 dark:bg-zinc-700 border-black text-black dark:text-amber-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                    : "border-transparent text-zinc-550 dark:text-zinc-400 hover:text-black"
+                    : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-black"
                 }`}
               >
                 <Sparkles className="h-3.5 w-3.5" />
@@ -418,7 +466,7 @@ function PracticeContent() {
                 className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all border-2 ${
                   exerciseMode === "collection"
                     ? "bg-amber-100 dark:bg-zinc-700 border-black text-black dark:text-amber-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                    : "border-transparent text-zinc-550 dark:text-zinc-400 hover:text-black"
+                    : "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-black"
                 }`}
               >
                 <FolderHeart className="h-3.5 w-3.5" />
@@ -445,7 +493,7 @@ function PracticeContent() {
                       className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black capitalize transition-all border-2 ${
                         tabMode === type
                           ? "bg-amber-100 border-black text-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]"
-                          : "bg-zinc-100 dark:bg-zinc-800 border-transparent text-zinc-500 hover:bg-zinc-150"
+                          : "bg-zinc-100 dark:bg-zinc-800 border-transparent text-zinc-500 hover:bg-zinc-200"
                       }`}
                     >
                       {type}
@@ -472,7 +520,7 @@ function PracticeContent() {
                         className={`flex items-center gap-2 w-full px-3 py-2.5 rounded-2xl text-left text-xs transition-all border-2 ${
                           selectedLab?.id === lab.id
                             ? "bg-amber-50/60 border-black text-black font-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] animate-in fade-in duration-200"
-                            : "bg-transparent border-transparent text-zinc-550 dark:text-zinc-400 hover:bg-zinc-100/50"
+                            : "bg-transparent border-transparent text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100/50"
                         }`}
                       >
                         <ChevronRight className="h-3.5 w-3.5 shrink-0" />
@@ -504,7 +552,7 @@ function PracticeContent() {
                         className={`flex items-center gap-2 w-full px-3 py-2.5 rounded-2xl text-left text-xs transition-all border-2 ${
                           selectedLab?.id === col.id
                             ? "bg-amber-50/60 border-black text-black font-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                            : "bg-transparent border-transparent text-zinc-550 dark:text-zinc-400 hover:bg-zinc-100/50"
+                            : "bg-transparent border-transparent text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100/50"
                         }`}
                       >
                         <Star className="h-3.5 w-3.5 shrink-0 text-amber-500 fill-current" />
@@ -578,7 +626,7 @@ function PracticeContent() {
                 </div>
 
                 {nodeId && (
-                  <div className="bg-[#fcfaf2] dark:bg-zinc-800/40 p-3 rounded-2xl border-2 border-black text-[10px] font-bold text-zinc-650 dark:text-zinc-400 leading-normal shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
+                  <div className="bg-[#fcfaf2] dark:bg-zinc-800/40 p-3 rounded-2xl border-2 border-black text-[10px] font-bold text-zinc-600 dark:text-zinc-400 leading-normal shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
                     已选定聚焦知识节点，AI 将针对性围绕该节点及其依赖链出题。
                   </div>
                 )}
@@ -625,7 +673,7 @@ function PracticeContent() {
                   <div>
                     <h2 className="text-base font-black text-black dark:text-white">{selectedLab.title}</h2>
                     {selectedLab.description && (
-                      <p className="text-xs font-bold text-zinc-550 dark:text-zinc-400 mt-2 leading-relaxed">{selectedLab.description}</p>
+                      <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 mt-2 leading-relaxed">{selectedLab.description}</p>
                     )}
                     <div className="flex items-center gap-2 mt-3">
                       <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black bg-amber-100 border-2 border-black text-black uppercase tracking-wider shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
@@ -742,7 +790,7 @@ function PracticeContent() {
                         <h4 className="font-black text-xs text-black dark:text-white">
                           评测结果: {evalResult.status === "passed" ? "全部通过" : evalResult.status === "partial" ? "部分通过" : evalResult.status === "failed" ? "未通过" : "执行错误"}
                         </h4>
-                        <p className="text-[10px] font-bold text-zinc-550 dark:text-zinc-400 mt-1">{evalResult.feedback}</p>
+                        <p className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 mt-1">{evalResult.feedback}</p>
                       </div>
                     </div>
                     {(evalResult.evaluation_result?.issues?.length ?? 0) > 0 && (

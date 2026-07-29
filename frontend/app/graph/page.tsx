@@ -265,7 +265,7 @@ export default function GraphPage() {
           <h1 className="text-3xl font-black text-black dark:text-white tracking-tight">
             知识图谱网络
           </h1>
-          <p className="text-sm font-semibold text-zinc-650 dark:text-zinc-400 mt-1.5">
+          <p className="text-sm font-semibold text-zinc-600 dark:text-zinc-400 mt-1.5">
             六大知识领域学习路线图，点击节点进入对应练习，通过答题点亮并解锁下一节点。
           </p>
         </div>
@@ -282,7 +282,7 @@ export default function GraphPage() {
 
             <div className="flex-1 min-h-[400px] relative">
               {loading ? (
-                <div className="h-full w-full flex flex-col items-center justify-center text-zinc-550 text-xs gap-3">
+                <div className="h-full w-full flex flex-col items-center justify-center text-zinc-500 text-xs gap-3">
                   <Loader2 className="h-7 w-7 animate-spin text-amber-600" />
                   <span className="font-bold">加载知识网络中...</span>
                 </div>
@@ -308,7 +308,7 @@ export default function GraphPage() {
               <div>
                 <h3 className="font-black text-sm text-black dark:text-white">网络点亮进度</h3>
                 <div className="mt-3 flex items-center gap-3">
-                  <div className="flex-1 bg-zinc-150 dark:bg-zinc-800 border-2 border-black h-4 rounded-full overflow-hidden">
+                  <div className="flex-1 bg-zinc-200 dark:bg-zinc-800 border-2 border-black h-4 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-amber-400 to-lime-400 transition-all duration-500 rounded-full"
                       style={{ width: `${lightedPercent}%` }}
@@ -324,7 +324,7 @@ export default function GraphPage() {
               {/* Category Stats */}
               {graphData?.stats?.categories && (
                 <div className="space-y-2.5 border-t-2 border-dashed border-black/10 pt-4">
-                  <h4 className="text-xs font-black text-zinc-550 dark:text-zinc-400 mb-2">分类掌握统计</h4>
+                  <h4 className="text-xs font-black text-zinc-500 dark:text-zinc-400 mb-2">分类掌握统计</h4>
                   {Object.entries(graphData.stats.categories).map(([cat, data]) => {
                     const catPercent = data.total > 0 ? Math.round((data.lighted / data.total) * 100) : 0;
                     const color = CATEGORY_COLORS[cat] || CATEGORY_COLORS.Other;
@@ -333,7 +333,7 @@ export default function GraphPage() {
                       <div key={cat} className="flex items-center gap-2 text-xs font-bold">
                         <span className="w-3 h-3 rounded-full border border-black shrink-0" style={{ backgroundColor: color }} />
                         <span className="flex-1 truncate text-zinc-700 dark:text-zinc-300">{name}</span>
-                        <span className="font-mono text-zinc-400 dark:text-zinc-550">{data.lighted}/{data.total}</span>
+                        <span className="font-mono text-zinc-400 dark:text-zinc-500">{data.lighted}/{data.total}</span>
                         <span className="font-mono text-zinc-600 dark:text-zinc-200 w-8 text-right">{catPercent}%</span>
                       </div>
                     );
@@ -345,7 +345,7 @@ export default function GraphPage() {
             {/* Path Recommendations */}
             <div className="space-y-2.5 border-t-2 border-dashed border-black/10 pt-4 mt-auto">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-black text-zinc-550 dark:text-zinc-400 flex items-center gap-1.5">
+                <h4 className="text-xs font-black text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
                   <Sparkles className="h-4.5 w-4.5 text-amber-500" />
                   学习路径推荐
                 </h4>

@@ -171,7 +171,7 @@ export default function ProfilePage() {
         
         <div>
           <h1 className="text-3xl font-black tracking-tight text-black dark:text-white">学习能力画像</h1>
-          <p className="text-sm font-semibold text-zinc-550 mt-1.5">评估您在各个游戏开发核心领域的星盘进度与多维度智能分析画像。</p>
+          <p className="text-sm font-semibold text-zinc-500 mt-1.5">评估您在各个游戏开发核心领域的星盘进度与多维度智能分析画像。</p>
         </div>
 
         {loading ? (
@@ -270,7 +270,7 @@ export default function ProfilePage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-2.5 font-bold">
-                          <div className="flex-1 bg-zinc-150 dark:bg-zinc-800 h-3 rounded-full overflow-hidden border-2 border-black">
+                          <div className="flex-1 bg-zinc-200 dark:bg-zinc-800 h-3 rounded-full overflow-hidden border-2 border-black">
                             <div
                               className="h-full border-r border-black transition-all duration-500"
                               style={{ width: `${v.coverage}%`, backgroundColor: matchInfo.hexColor }}
@@ -366,11 +366,11 @@ export default function ProfilePage() {
                                     <div className="min-w-0">
                                       <h5 className="text-xs font-black text-black dark:text-zinc-200 flex items-center gap-1.5">
                                         {node.name}
-                                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-black/15 bg-zinc-100 dark:bg-zinc-800 text-zinc-550">
+                                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-black/15 bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
                                           {node.code}
                                         </span>
                                       </h5>
-                                      <p className="text-[10px] font-bold text-zinc-550 dark:text-zinc-500 mt-1.5 leading-normal line-clamp-2">
+                                      <p className="text-[10px] font-bold text-zinc-500 dark:text-zinc-500 mt-1.5 leading-normal line-clamp-2">
                                         {node.description}
                                       </p>
                                     </div>
@@ -387,7 +387,7 @@ export default function ProfilePage() {
                                 
                                 {/* Inner Proficiency Bar */}
                                 {node.is_lighted && (
-                                  <div className="mt-3 bg-zinc-150 dark:bg-zinc-800 h-2.5 rounded-full overflow-hidden border-2 border-black">
+                                  <div className="mt-3 bg-zinc-200 dark:bg-zinc-800 h-2.5 rounded-full overflow-hidden border-2 border-black">
                                     <div
                                       className="h-full transition-all duration-300"
                                       style={{ width: `${node.proficiency}%`, backgroundColor: catInfo.hexColor }}

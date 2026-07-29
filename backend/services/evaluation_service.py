@@ -205,6 +205,78 @@ class EvaluationService:
             "details": details,
         }
 
+    # 程序判分覆盖的客观题型（code 走 LLM 评测）
+    OBJECTIVE_LAB_TYPES = ("quiz", "judge", "match", "arrange", "fill")
+
+    def evaluate_objective_submission(
+        self,
+        lab_type: str,
+        test_cases: dict,
+        user_answers: dict,
+    ) -> dict:
+        """客观题服务端权威判分 — 规则与前端 exercise-renderer 保持一致
+
+        answers 约定（与前端提交对齐）:
+        - quiz/judge: {"<question_id>": <option_index>}
+        - match:     {"matches": {"左项文本": "右项文本"}}
+        - arrange:   {"order": [原始下标按用户排列顺序]}
+        - fill:      {"blanks": ["空1答案", "空2答案"]}
+        """
+        test_cases = test_cases or {}
+        user_answers = user_answers or {}
+
+        if lab_type in ("quiz", "judge"):
+            return self.evaluate_quiz_submission(test_cases, user_answers)
+
+        if lab_type == "match":
+            pairs = test_cases.get("pairs") or {}
+            if not pairs:
+                return {"status": "error", "score": 0, "feedback": "未找到配对数据", "details": []}
+            user_matches = user_answers.get("matches") or {}
+            correct = sum(1 for left, right in pairs.items() if user_matches.get(left) == right)
+            score = round(correct / len(pairs) * 100)
+            return {
+                "status": "passed" if score == 100 else "failed",
+                "score": score,
+                "feedback": f"配对正确 {correct}/{len(pairs)} 组",
+                "details": [],
+            }
+
+        if lab_type == "arrange":
+            correct_order = test_cases.get("correct_order") or []
+            if not correct_order:
+                return {"status": "error", "score": 0, "feedback": "未找到排序数据", "details": []}
+            order = user_answers.get("order") or []
+            exact = len(order) == len(correct_order) and all(
+                a == b for a, b in zip(order, correct_order)
+            )
+            return {
+                "status": "passed" if exact else "failed",
+                "score": 100 if exact else 0,
+                "feedback": "排序完全正确" if exact else "排序有误",
+                "details": [],
+            }
+
+        if lab_type == "fill":
+            blanks = test_cases.get("blanks") or []
+            if not blanks:
+                return {"status": "error", "score": 0, "feedback": "未找到填空数据", "details": []}
+            user_blanks = user_answers.get("blanks") or []
+            correct = sum(
+                1 for i, expected in enumerate(blanks)
+                if i < len(user_blanks)
+                and str(user_blanks[i] or "").strip().lower() == str(expected or "").strip().lower()
+            )
+            score = round(correct / len(blanks) * 100)
+            return {
+                "status": "passed" if score == 100 else "failed",
+                "score": score,
+                "feedback": f"填空正确 {correct}/{len(blanks)} 处",
+                "details": [],
+            }
+
+        return {"status": "error", "score": 0, "feedback": f"不支持的题型: {lab_type}", "details": []}
+
     async def generate_targeted_exercise(
         self,
         node_name: str,

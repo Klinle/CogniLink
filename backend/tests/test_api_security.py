@@ -26,6 +26,17 @@ PROTECTED_ENDPOINTS = [
     ("GET", "/api/memories/settings"),
     ("POST", "/api/memories/settings"),
     ("GET", "/api/memories/settings/check-topic?topic=python"),
+    # M1 学习闭环新增端点
+    ("GET", "/api/reviews/today"),
+    ("GET", "/api/reviews/stats"),
+    ("GET", "/api/reviews"),
+    ("POST", f"/api/reviews/{DOC_ID}/answer"),
+    ("POST", f"/api/reviews/{DOC_ID}/graduate"),
+    ("DELETE", f"/api/reviews/{DOC_ID}"),
+    ("GET", "/api/onboarding/status"),
+    ("POST", "/api/onboarding/complete"),
+    ("GET", "/api/onboarding/questions?domain=programming"),
+    ("POST", "/api/onboarding/diagnose"),
 ]
 
 

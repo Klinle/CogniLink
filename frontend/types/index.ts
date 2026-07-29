@@ -1,8 +1,56 @@
+// RAG 回答的结构化来源（T3 溯源跳转）
+export interface SourceItem {
+  document_id: string;
+  title: string;
+  page_number: number | null;
+  chunk_id: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  sources?: SourceItem[];
+}
+
+// 错题复习队列条目（T2）
+export interface ReviewItem {
+  id: string;
+  source_type: string;
+  lab_id?: string | null;
+  node_id?: string | null;
+  title: string;
+  exercise_type: string;
+  content: Record<string, unknown>;
+  answer?: unknown;
+  explanation?: string | null;
+  wrong_count: number;
+  success_streak: number;
+  interval_days: number;
+  state: string;
+  due_at?: string | null;
+  last_reviewed_at?: string | null;
+  created_at: string;
+}
+
+export interface ReviewTodayResponse {
+  items: ReviewItem[];
+  total_due: number;
+  completed_today: number;
+  cap: number;
+  next_due_at: string | null;
+}
+
+export interface ReviewAnswerResponse {
+  item_id: string;
+  correct: boolean;
+  state: string;
+  graduated: boolean;
+  next_interval_days: number;
+  due_at: string | null;
+  success_streak: number;
+  message: string;
 }
 
 export interface Conversation {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Message, Conversation, ConversationDetail } from "@/types";
+import { Message, Conversation, ConversationDetail, SourceItem } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 import { useSettingsStore, SUPPORTED_MODELS } from "@/stores/settings";
 import { API_BASE_URL, getAuthHeaders } from "@/lib/api";
@@ -204,6 +204,7 @@ export function useChat() {
       // 统一使用 SSE 解析（/api/chat/graph 返回 SSE 事件流）
       setWorkflowSteps([]);
       let lastUpdateTime = 0;
+      let capturedSources: SourceItem[] = [];
       const UPDATE_INTERVAL = 30; // 30ms 节流，纯文本渲染足够快
       await parseSSEStream(response, ({ event, data }) => {
         const d = data as {
@@ -215,6 +216,10 @@ export function useChat() {
           text?: string;
         };
         if (event === "status") {
+          // rag_bot done 事件携带结构化来源，流结束后挂到消息上（T3 溯源跳转）
+          if (d.node === "rag_bot" && d.status === "done" && Array.isArray(d.data?.sources)) {
+            capturedSources = d.data.sources as SourceItem[];
+          }
           setWorkflowSteps((prev) => {
             if (d.status === "running") {
               return [
@@ -258,11 +263,15 @@ export function useChat() {
           setErrorMessage(d.message || "工作流执行失败");
         }
       });
-      // 最终更新确保完整内容渲染
+      // 最终更新确保完整内容渲染，并附加溯源来源
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantMessage.id
-            ? { ...msg, content: assistantMessage.content }
+            ? {
+                ...msg,
+                content: assistantMessage.content,
+                sources: capturedSources.length ? capturedSources : undefined,
+              }
             : msg
         )
       );

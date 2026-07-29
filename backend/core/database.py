@@ -35,6 +35,9 @@ async def init_db():
             # memory_settings 由全局改为按用户隔离
             "ALTER TABLE memory_settings ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE",
             "ALTER TABLE memory_settings DROP CONSTRAINT IF EXISTS memory_settings_key_key",
+            # M1 学习闭环：Onboarding 完成标记 + 诊断题标签
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_completed INTEGER DEFAULT 0",
+            "ALTER TABLE labs ADD COLUMN IF NOT EXISTS tag VARCHAR(30)",
         ]
         for stmt in alter_statements:
             await conn.execute(text(stmt))
@@ -59,6 +62,9 @@ async def init_db():
         "CREATE INDEX IF NOT EXISTS idx_user_knowledge_states_user_id ON user_knowledge_states (user_id)",
         "CREATE INDEX IF NOT EXISTS idx_user_lab_submissions_user_id ON user_lab_submissions (user_id)",
         "CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_category ON knowledge_nodes (category)",
+        "CREATE INDEX IF NOT EXISTS idx_user_review_items_user_due ON user_review_items (user_id, due_at)",
+        "CREATE INDEX IF NOT EXISTS idx_user_review_logs_user_time ON user_review_logs (user_id, reviewed_at)",
+        "CREATE INDEX IF NOT EXISTS idx_labs_tag ON labs (tag)",
         # 业务唯一性约束（若历史数据有重复会失败并告警，需手动清理后生效）
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_knowledge_states_user_node ON user_knowledge_states (user_id, node_id)",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_memory_settings_user_key ON memory_settings (user_id, key)",

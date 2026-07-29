@@ -184,6 +184,18 @@ class RAGService:
 
         return result
 
+    @staticmethod
+    async def _load_doc_titles(
+        session: AsyncSession, chunks: List[DocumentChunk]
+    ) -> dict:
+        doc_ids = {chunk.document_id for chunk in chunks}
+        if not doc_ids:
+            return {}
+        doc_result = await session.execute(
+            select(Document.id, Document.title).where(Document.id.in_(doc_ids))
+        )
+        return {row[0]: row[1] for row in doc_result.all()}
+
     async def _format_chunks(
         self, session: AsyncSession, chunks: List[DocumentChunk]
     ) -> str:
@@ -191,14 +203,7 @@ class RAGService:
         if not chunks:
             return ""
 
-        # Fetch document titles for source annotations
-        doc_ids = {chunk.document_id for chunk in chunks}
-        doc_titles = {}
-        if doc_ids:
-            doc_result = await session.execute(
-                select(Document.id, Document.title).where(Document.id.in_(doc_ids))
-            )
-            doc_titles = {row[0]: row[1] for row in doc_result.all()}
+        doc_titles = await self._load_doc_titles(session, chunks)
 
         # Build context with source annotations
         parts = []
@@ -209,6 +214,24 @@ class RAGService:
             parts.append(f"{source_tag}\n{chunk.content}")
 
         return "\n\n".join(parts)
+
+    @staticmethod
+    def _build_sources(chunks: List[DocumentChunk], doc_titles: dict) -> List[dict]:
+        """构造结构化来源列表（按 (document_id, page_number) 去重，保持检索得分顺序）"""
+        sources: List[dict] = []
+        seen = set()
+        for chunk in chunks:
+            key = (chunk.document_id, chunk.page_number)
+            if key in seen:
+                continue
+            seen.add(key)
+            sources.append({
+                "document_id": str(chunk.document_id),
+                "title": doc_titles.get(chunk.document_id, "未知文档"),
+                "page_number": chunk.page_number,
+                "chunk_id": str(chunk.id),
+            })
+        return sources
 
     async def get_context_for_query(
         self,
@@ -235,7 +258,7 @@ class RAGService:
         )
         return await self._format_chunks(session, chunks)
 
-    async def get_context_for_queries(
+    async def get_context_and_sources_for_queries(
         self,
         queries: List[str],
         api_key: str,
@@ -248,18 +271,22 @@ class RAGService:
         use_local: bool = True,
         user_id: str = None,
         domain: Optional[str] = None,
-    ) -> str:
+    ) -> dict:
         """多子查询并行混合检索 + 去重合并（RAG 流水线『多通道并行检索』的知识库通道）。
 
         AsyncSession 不支持并发复用，因此每个子查询使用独立会话并行执行，
         结果按子查询顺序去重合并后统一格式化。
+
+        Returns:
+            {"context": 带来源标注的上下文字符串, "sources": 结构化来源列表}
         """
         import asyncio
         from core.database import async_session_maker
 
+        empty = {"context": "", "sources": []}
         cleaned = [q.strip() for q in (queries or []) if q and q.strip()][:3]
         if not cleaned:
-            return ""
+            return empty
 
         async def _search_one(q: str) -> List[DocumentChunk]:
             async with async_session_maker() as sub_session:
@@ -283,6 +310,27 @@ class RAGService:
                     seen.add(chunk.id)
                     merged.append(chunk)
 
-        return await self._format_chunks(session, merged[:max_chunks])
+        top_chunks = merged[:max_chunks]
+        if not top_chunks:
+            return empty
+        doc_titles = await self._load_doc_titles(session, top_chunks)
+        context = await self._format_chunks(session, top_chunks)
+        return {
+            "context": context,
+            "sources": self._build_sources(top_chunks, doc_titles),
+        }
+
+    async def get_context_for_queries(
+        self,
+        queries: List[str],
+        api_key: str,
+        session: AsyncSession,
+        **kwargs,
+    ) -> str:
+        """兼容入口：仅返回上下文字符串（来源列表见 get_context_and_sources_for_queries）"""
+        result = await self.get_context_and_sources_for_queries(
+            queries, api_key, session, **kwargs
+        )
+        return result["context"]
 
 rag_service = RAGService()

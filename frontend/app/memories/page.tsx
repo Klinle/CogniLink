@@ -2,16 +2,6 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useSettingsStore, SUPPORTED_MODELS } from "@/stores/settings";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Brain,
   Plus,
@@ -25,8 +15,6 @@ import {
   Clock,
   Shield,
   Filter,
-  Tag,
-  Star,
 } from "lucide-react";
 import UserLayout from "@/components/user-layout";
 import { API_BASE_URL, getAuthHeaders } from "@/lib/api";
@@ -56,19 +44,39 @@ interface Toast {
 }
 
 const categories = [
-  { value: "fact", label: "事实", color: "bg-blue-500/10 text-blue-600" },
+  {
+    value: "fact",
+    label: "事实",
+    note: "bg-sky-100 dark:bg-sky-900/40",
+  },
   {
     value: "preference",
     label: "偏好",
-    color: "bg-emerald-500/10 text-emerald-600",
+    note: "bg-amber-100 dark:bg-amber-900/40",
   },
-  { value: "goal", label: "目标", color: "bg-violet-500/10 text-violet-600" },
+  {
+    value: "goal",
+    label: "目标",
+    note: "bg-green-100 dark:bg-green-900/40",
+  },
   {
     value: "important",
     label: "重要",
-    color: "bg-amber-500/10 text-amber-600",
+    note: "bg-rose-100 dark:bg-rose-900/40",
   },
 ];
+
+const inputClass =
+  "w-full border-2 border-black rounded-xl bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-bold text-black dark:text-white placeholder:text-zinc-400 placeholder:font-semibold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-x-[1px] focus:translate-y-[1px] focus:shadow-none transition-all";
+
+const primaryBtn =
+  "inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-2 border-black bg-amber-300 dark:bg-amber-600 text-black dark:text-white font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all disabled:opacity-40";
+
+const secondaryBtn =
+  "inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-2 border-black bg-white dark:bg-zinc-800 text-black dark:text-white font-black text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all disabled:opacity-40";
+
+const chipClass =
+  "inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border-2 border-black text-[11px] font-bold shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]";
 
 export default function MemoriesPage() {
   const router = useRouter();
@@ -159,7 +167,7 @@ export default function MemoriesPage() {
 
   const handleAddMemory = async () => {
     if (!newMemory.content.trim()) {
-      alert("请输入记忆内容");
+      showToast("error", "先写点内容，再贴上便签");
       return;
     }
     try {
@@ -182,20 +190,23 @@ export default function MemoriesPage() {
         await fetchMemories();
         setNewMemory({ content: "", category: "fact", importance: 5 });
         setShowAddForm(false);
+        showToast("success", "便签已贴上墙");
       } else {
-        alert("添加记忆失败");
+        showToast("error", "添加记忆失败，稍后再试");
       }
     } catch (error) {
       console.error("Add memory error:", error);
+      showToast("error", "添加记忆失败，稍后再试");
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("确定要删除这条记忆吗？")) return;
+    if (!confirm("确定要撕掉这张便签吗？")) return;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/memories/${id}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -275,7 +286,7 @@ export default function MemoriesPage() {
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
-      alert("请输入搜索内容");
+      showToast("info", "输入关键词，再按搜索");
       return;
     }
     setIsLoading(true);
@@ -302,102 +313,101 @@ export default function MemoriesPage() {
     }
   };
 
-  const getCategoryBadge = (category: string) => {
-    const cat = categories.find((c) => c.value === category);
-    return (
-      <span
-        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cat?.color || "bg-muted text-muted-foreground"}`}
-      >
-        {cat?.label || category}
-      </span>
-    );
-  };
+  const getNoteColor = (category: string) =>
+    categories.find((c) => c.value === category)?.note ||
+    "bg-white dark:bg-zinc-900";
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case "preference":
-        return <Star className="h-4 w-4 text-amber-500" />;
-      case "goal":
-        return <Tag className="h-4 w-4 text-blue-500" />;
-      default:
-        return <Brain className="h-4 w-4 text-purple-500" />;
-    }
-  };
+  const getCategoryLabel = (category: string) =>
+    categories.find((c) => c.value === category)?.label || category;
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <UserLayout activePath="/memories">
       {/* Toast Notifications */}
-      <div className="fixed top-4 right-4 z-50 space-y-2">
+      <div className="fixed top-4 right-4 z-[60] space-y-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg animate-in slide-in-from-right fade-in duration-200 ${
+            className={`flex items-center gap-2 px-4 py-3 rounded-2xl border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] font-bold text-sm text-black dark:text-white ${
               toast.type === "success"
-                ? "bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200"
+                ? "bg-green-200 dark:bg-green-700"
                 : toast.type === "error"
-                  ? "bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200"
-                  : "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200"
+                  ? "bg-red-200 dark:bg-red-800"
+                  : "bg-sky-200 dark:bg-sky-800"
             }`}
           >
             {toast.type === "success" && <Check className="h-4 w-4" />}
             {toast.type === "error" && <AlertCircle className="h-4 w-4" />}
             {toast.type === "info" && <Clock className="h-4 w-4" />}
-            <span className="text-sm font-medium">{toast.message}</span>
+            <span>{toast.message}</span>
           </div>
         ))}
       </div>
 
-    <UserLayout activePath="/memories">
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-8 py-12">
+      <div className="flex-1 overflow-y-auto bg-[#fdfaf2] dark:bg-[#181611] bg-[linear-gradient(rgba(139,90,43,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(139,90,43,0.02)_1px,transparent_1px)] bg-[size:24px_24px]">
+        <div className="max-w-5xl mx-auto p-4 md:p-8">
           {/* Header */}
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
             <div>
-              <h1 className="text-3xl font-semibold mb-2">记忆管理</h1>
-              <p className="text-muted-foreground">
-                管理自动提取的记忆，控制哪些内容会被记住
+              <h1 className="text-3xl font-black tracking-tight text-black dark:text-white flex items-center gap-2">
+                <Brain className="h-8 w-8 text-amber-500" />
+                记忆便签墙
+              </h1>
+              <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 mt-1">
+                AI 帮你记下的每一件事都贴在这里，随时翻看、补充或撕掉
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setShowSettings(true)}>
-                <Settings className="mr-2 h-4 w-4" />
+              <button
+                className={secondaryBtn}
+                onClick={() => setShowSettings(true)}
+              >
+                <Settings className="h-4 w-4" />
                 提取设置
-              </Button>
-              <Button onClick={() => setShowAddForm(!showAddForm)}>
-                <Plus className="mr-2 h-4 w-4" />
+              </button>
+              <button
+                className={primaryBtn}
+                onClick={() => setShowAddForm(!showAddForm)}
+              >
+                <Plus className="h-4 w-4" />
                 添加记忆
-              </Button>
+              </button>
             </div>
           </div>
 
           {/* Settings Summary */}
-          <div className="grid grid-cols-3 gap-4 mb-8">
-            <div className="p-4 rounded-lg border border-border bg-card">
-              <div className="flex items-center gap-2 mb-2">
-                <Brain className="h-4 w-4 text-purple-500" />
-                <span className="text-sm font-medium">自动提取</span>
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="bg-white dark:bg-zinc-900 border-2 border-black rounded-3xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <div className="flex items-center gap-2 mb-1">
+                <Brain className="h-4 w-4 text-amber-500" />
+                <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
+                  自动提取
+                </span>
               </div>
-              <p className="text-2xl font-semibold">
+              <p className="text-2xl font-black text-black dark:text-white">
                 {settings.auto_extract ? "开启" : "关闭"}
               </p>
             </div>
-            <div className="p-4 rounded-lg border border-border bg-card">
-              <div className="flex items-center gap-2 mb-2">
-                <Shield className="h-4 w-4 text-emerald-500" />
-                <span className="text-sm font-medium">白名单主题</span>
+            <div className="bg-white dark:bg-zinc-900 border-2 border-black rounded-3xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <div className="flex items-center gap-2 mb-1">
+                <Shield className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
+                  白名单主题
+                </span>
               </div>
-              <p className="text-2xl font-semibold">
+              <p className="text-2xl font-black text-black dark:text-white">
                 {settings.whitelist_topics.length}
               </p>
             </div>
-            <div className="p-4 rounded-lg border border-border bg-card">
-              <div className="flex items-center gap-2 mb-2">
-                <Filter className="h-4 w-4 text-red-500" />
-                <span className="text-sm font-medium">黑名单主题</span>
+            <div className="bg-white dark:bg-zinc-900 border-2 border-black rounded-3xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <div className="flex items-center gap-2 mb-1">
+                <Filter className="h-4 w-4 text-red-600 dark:text-red-400" />
+                <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
+                  黑名单主题
+                </span>
               </div>
-              <p className="text-2xl font-semibold">
+              <p className="text-2xl font-black text-black dark:text-white">
                 {settings.blacklist_topics.length}
               </p>
             </div>
@@ -406,53 +416,64 @@ export default function MemoriesPage() {
           {/* Search */}
           <div className="flex gap-2 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="搜索记忆..."
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="想找哪张便签？输入关键词..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="pl-9"
+                className={`${inputClass} pl-9`}
               />
             </div>
-            <Button variant="outline" onClick={handleSearch}>
+            <button className={secondaryBtn} onClick={handleSearch}>
+              <Search className="h-4 w-4" />
               搜索
-            </Button>
+            </button>
           </div>
 
           {/* Add Memory Form */}
           {showAddForm && (
-            <div className="border border-border rounded-xl p-6 mb-6">
-              <h3 className="font-medium mb-4">添加新记忆</h3>
+            <div className="bg-white dark:bg-zinc-900 border-2 border-black rounded-3xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mb-6">
+              <h3 className="font-black text-black dark:text-white mb-4">
+                写一张新便签
+              </h3>
               <div className="space-y-4">
-                <Textarea
-                  placeholder="需要记住什么？"
+                <textarea
+                  placeholder="想让 AI 记住什么？比如你的学习目标、常用工具、易错点..."
                   value={newMemory.content}
                   onChange={(e) =>
                     setNewMemory({ ...newMemory, content: e.target.value })
                   }
-                  className="min-h-[100px]"
+                  className={`${inputClass} min-h-[100px] resize-y`}
                 />
-                <div className="flex gap-3">
-                  <Select
-                    value={newMemory.category}
-                    onValueChange={(value) =>
-                      setNewMemory({ ...newMemory, category: value })
-                    }
-                  >
-                    <SelectTrigger className="w-[160px]">
-                      <SelectValue placeholder="类别" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.value} value={cat.value}>
-                          {cat.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    type="number"
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
+                    类别
+                  </span>
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.value}
+                      type="button"
+                      onClick={() =>
+                        setNewMemory({ ...newMemory, category: cat.value })
+                      }
+                      className={`${chipClass} px-3 py-1.5 text-xs text-black dark:text-white transition-all ${
+                        newMemory.category === cat.value
+                          ? `${cat.note} font-black`
+                          : "bg-white dark:bg-zinc-800 hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none"
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400 shrink-0">
+                    重要度
+                  </span>
+                  <input
+                    type="range"
                     min={1}
                     max={10}
                     value={newMemory.importance}
@@ -462,113 +483,130 @@ export default function MemoriesPage() {
                         importance: parseInt(e.target.value),
                       })
                     }
-                    className="w-[100px]"
-                    placeholder="重要性"
+                    className="flex-1 accent-amber-500"
                   />
-                  <div className="flex-1"></div>
-                  <Button
-                    variant="outline"
+                  <span className="w-12 text-center font-black text-black dark:text-white">
+                    {newMemory.importance}/10
+                  </span>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    className={secondaryBtn}
                     onClick={() => setShowAddForm(false)}
                   >
                     取消
-                  </Button>
-                  <Button onClick={handleAddMemory}>添加</Button>
+                  </button>
+                  <button className={primaryBtn} onClick={handleAddMemory}>
+                    <Plus className="h-4 w-4" />
+                    贴上墙
+                  </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Memories List */}
-          <div className="border border-border rounded-xl overflow-hidden">
-            {isLoading ? (
-              <div className="p-12 text-center">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
-                <p className="text-muted-foreground mt-2">加载中...</p>
-              </div>
-            ) : memories.length === 0 ? (
-              <div className="p-12 text-center">
-                <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center mx-auto mb-4">
-                  <Brain className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <h3 className="font-medium mb-1">暂无记忆</h3>
-                <p className="text-sm text-muted-foreground">
-                  开启记忆功能后，AI 会自动从对话中提取重要信息
+          {/* Memories Wall */}
+          {isLoading ? (
+            <div className="py-16 text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto text-amber-500" />
+              <p className="text-sm font-bold text-zinc-500 dark:text-zinc-400 mt-3">
+                正在整理便签墙...
+              </p>
+            </div>
+          ) : memories.length === 0 ? (
+            <div className="flex justify-center py-12">
+              <div className="relative mt-2 w-full max-w-sm border-2 border-dashed border-black/30 dark:border-white/30 rounded-2xl p-8 text-center rotate-[-0.6deg]">
+                <span className="absolute -top-2 left-1/2 -translate-x-1/2 w-14 h-4 bg-black/10 dark:bg-white/10 rotate-[-2deg] rounded-sm" />
+                <Brain className="h-8 w-8 mx-auto text-zinc-400 mb-3" />
+                <h3 className="font-black text-black dark:text-white mb-1">
+                  墙上还空着
+                </h3>
+                <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
+                  和 AI 聊聊你的学习目标，或点击上方&ldquo;添加记忆&rdquo;手动写下第一张便签
                 </p>
               </div>
-            ) : (
-              <div className="divide-y divide-border">
-                {memories.map((memory) => (
-                  <div
-                    key={memory.id}
-                    className="p-4 hover:bg-muted/50 transition-colors"
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {memories.map((memory, index) => (
+                <div
+                  key={memory.id}
+                  className={`group relative mt-2 border-2 border-black rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform hover:rotate-0 hover:-translate-y-0.5 ${
+                    index % 2 === 0 ? "rotate-[-0.6deg]" : "rotate-[0.6deg]"
+                  } ${getNoteColor(memory.category)}`}
+                >
+                  <span className="absolute -top-2 left-1/2 -translate-x-1/2 w-14 h-4 bg-black/10 dark:bg-white/10 rotate-[-2deg] rounded-sm" />
+                  <button
+                    onClick={() => handleDelete(memory.id)}
+                    className="absolute top-2 right-2 p-1.5 rounded-lg border-2 border-black bg-white dark:bg-zinc-800 text-black dark:text-white opacity-0 group-hover:opacity-100 hover:bg-red-200 dark:hover:bg-red-800 transition-all"
+                    title="撕掉这张便签"
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0 mt-0.5">
-                        {getCategoryIcon(memory.category)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm leading-relaxed">
-                          {memory.content}
-                        </p>
-                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                          {getCategoryBadge(memory.category)}
-                          <span>·</span>
-                          <span>重要度: {memory.importance}/10</span>
-                          <span>·</span>
-                          <span>
-                            {new Date(memory.created_at).toLocaleDateString()}
-                          </span>
-                          {memory.access_count > 0 && (
-                            <>
-                              <span>·</span>
-                              <span>已引用 {memory.access_count} 次</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleDelete(memory.id)}
-                        className="p-2 hover:bg-destructive/10 hover:text-destructive rounded-lg transition-colors shrink-0"
-                        title="删除"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                  <p className="text-sm font-bold text-black dark:text-white leading-relaxed break-words pr-8">
+                    {memory.content}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3">
+                    <span
+                      className={`${chipClass} bg-white dark:bg-zinc-800 text-black dark:text-white`}
+                    >
+                      {getCategoryLabel(memory.category)}
+                    </span>
+                    <span className="text-[11px] font-bold text-zinc-600 dark:text-zinc-300">
+                      重要度 {memory.importance}/10
+                    </span>
+                    <span className="text-[11px] font-bold text-zinc-600 dark:text-zinc-300">
+                      {new Date(memory.created_at).toLocaleDateString()}
+                    </span>
+                    {memory.access_count > 0 && (
+                      <span className="text-[11px] font-bold text-zinc-600 dark:text-zinc-300">
+                        被想起 {memory.access_count} 次
+                      </span>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-    </UserLayout>
 
       {/* Settings Modal */}
       {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-background rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowSettings(false)}
+        >
+          <div
+            className="bg-white dark:bg-zinc-900 border-2 border-black rounded-3xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] w-full max-w-2xl max-h-[88vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-              <div className="flex items-center gap-3">
-                <Settings className="h-5 w-5 text-muted-foreground" />
-                <h2 className="font-semibold">记忆提取设置</h2>
+            <div className="flex items-center justify-between px-4 py-3 border-b-2 border-black bg-amber-50 dark:bg-zinc-800">
+              <div className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-black dark:text-white" />
+                <h2 className="font-black text-black dark:text-white">
+                  记忆提取设置
+                </h2>
               </div>
               <button
                 onClick={() => setShowSettings(false)}
-                className="p-2 hover:bg-muted rounded-lg transition-colors"
+                className="p-1.5 rounded-lg border-2 border-black bg-white dark:bg-zinc-900 text-black dark:text-white shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
 
             {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-5 space-y-6">
               {/* Auto Extract Toggle */}
-              <div className="flex items-center justify-between p-4 rounded-lg border border-border">
+              <div className="flex items-center justify-between gap-4 border-2 border-black rounded-2xl p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] bg-white dark:bg-zinc-900">
                 <div>
-                  <p className="font-medium">自动提取记忆</p>
-                  <p className="text-sm text-muted-foreground">
-                    开启后，AI 会自动从对话中提取重要信息作为记忆
+                  <p className="font-black text-black dark:text-white">
+                    自动提取记忆
+                  </p>
+                  <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
+                    开启后，AI 会在对话结束时自动把重要信息写成便签
                   </p>
                 </div>
                 <button
@@ -578,25 +616,27 @@ export default function MemoriesPage() {
                       auto_extract: !settings.auto_extract,
                     })
                   }
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border-2 border-black transition-colors ${
                     settings.auto_extract
-                      ? "bg-emerald-500"
-                      : "bg-gray-200 dark:bg-gray-700"
+                      ? "bg-amber-400 dark:bg-amber-500"
+                      : "bg-zinc-200 dark:bg-zinc-700"
                   }`}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      settings.auto_extract ? "translate-x-6" : "translate-x-1"
+                    className={`inline-block h-5 w-5 transform rounded-full border-2 border-black bg-white transition-transform ${
+                      settings.auto_extract ? "translate-x-5" : "translate-x-0.5"
                     }`}
                   />
                 </button>
               </div>
 
               {/* Min Importance */}
-              <div className="space-y-3">
-                <label className="font-medium">最小重要度阈值</label>
-                <p className="text-sm text-muted-foreground">
-                  只保存重要度高于此值的记忆 (1-10)
+              <div className="space-y-2">
+                <label className="font-black text-black dark:text-white">
+                  最小重要度阈值
+                </label>
+                <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
+                  只保存重要度不低于此值的记忆（1-10）
                 </p>
                 <div className="flex items-center gap-4">
                   <input
@@ -610,19 +650,21 @@ export default function MemoriesPage() {
                         min_importance: parseInt(e.target.value),
                       })
                     }
-                    className="flex-1"
+                    className="flex-1 accent-amber-500"
                   />
-                  <span className="w-12 text-center font-medium">
+                  <span className="w-12 text-center font-black text-black dark:text-white">
                     {settings.min_importance}
                   </span>
                 </div>
               </div>
 
               {/* Whitelist */}
-              <div className="space-y-3">
-                <label className="font-medium">白名单主题</label>
-                <p className="text-sm text-muted-foreground">
-                  仅提取包含这些主题的记忆（为空则不限制）
+              <div className="space-y-2">
+                <label className="font-black text-black dark:text-white">
+                  白名单主题
+                </label>
+                <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
+                  只提取包含这些主题的记忆，留空表示不限制
                 </p>
                 <div className="flex gap-2">
                   <input
@@ -632,23 +674,26 @@ export default function MemoriesPage() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") addWhitelistItem();
                     }}
-                    placeholder="添加主题..."
-                    className="flex-1 px-3 py-2 rounded-lg border border-border bg-background"
+                    placeholder="输入主题后回车添加..."
+                    className={inputClass}
                   />
-                  <Button onClick={addWhitelistItem} size="sm">
+                  <button
+                    className={`${primaryBtn} shrink-0`}
+                    onClick={addWhitelistItem}
+                  >
                     <Plus className="h-4 w-4" />
-                  </Button>
+                  </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {settings.whitelist_topics.map((item) => (
                     <span
                       key={item}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 text-sm"
+                      className={`${chipClass} bg-green-200 dark:bg-green-700 text-black dark:text-white`}
                     >
                       {item}
                       <button
                         onClick={() => removeWhitelistItem(item)}
-                        className="hover:text-emerald-600"
+                        className="hover:opacity-60"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -658,10 +703,12 @@ export default function MemoriesPage() {
               </div>
 
               {/* Blacklist */}
-              <div className="space-y-3">
-                <label className="font-medium">黑名单主题</label>
-                <p className="text-sm text-muted-foreground">
-                  不提取包含这些主题的记忆
+              <div className="space-y-2">
+                <label className="font-black text-black dark:text-white">
+                  黑名单主题
+                </label>
+                <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
+                  含这些主题的内容不会被记下来
                 </p>
                 <div className="flex gap-2">
                   <input
@@ -671,23 +718,26 @@ export default function MemoriesPage() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") addBlacklistItem();
                     }}
-                    placeholder="添加主题..."
-                    className="flex-1 px-3 py-2 rounded-lg border border-border bg-background"
+                    placeholder="输入主题后回车添加..."
+                    className={inputClass}
                   />
-                  <Button onClick={addBlacklistItem} size="sm">
+                  <button
+                    className={`${primaryBtn} shrink-0`}
+                    onClick={addBlacklistItem}
+                  >
                     <Plus className="h-4 w-4" />
-                  </Button>
+                  </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {settings.blacklist_topics.map((item) => (
                     <span
                       key={item}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 text-sm"
+                      className={`${chipClass} bg-red-200 dark:bg-red-800 text-black dark:text-white`}
                     >
                       {item}
                       <button
                         onClick={() => removeBlacklistItem(item)}
-                        className="hover:text-red-600"
+                        className="hover:opacity-60"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -698,24 +748,31 @@ export default function MemoriesPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted/30">
-              <Button variant="outline" onClick={() => setShowSettings(false)}>
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t-2 border-black bg-amber-50 dark:bg-zinc-800">
+              <button
+                className={secondaryBtn}
+                onClick={() => setShowSettings(false)}
+              >
                 取消
-              </Button>
-              <Button onClick={handleSaveSettings} disabled={isSavingSettings}>
+              </button>
+              <button
+                className={primaryBtn}
+                onClick={handleSaveSettings}
+                disabled={isSavingSettings}
+              >
                 {isSavingSettings ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     保存中...
                   </>
                 ) : (
                   "保存设置"
                 )}
-              </Button>
+              </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </UserLayout>
   );
 }

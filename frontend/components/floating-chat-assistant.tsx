@@ -21,6 +21,7 @@ import {
   Minimize2,
 } from "lucide-react";
 import { WorkflowPanel } from "@/components/workflow-panel";
+import SourceChips from "@/components/source-chips";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PixelAgentAvatar } from "./pixel-agent-avatar";
@@ -507,10 +508,10 @@ export default function FloatingChatAssistant() {
 
   // 导师风格映射
   const agentDisplayNames: Record<string, string> = {
-    auto: "小航 (智能路由)",
-    humor_mentor: "小柴 (柴犬)",
-    academic_mentor: "小鹰 (猫头鹰)",
-    coach_mentor: "小铁 (机器人)",
+    auto: "小脑 (智能路由)",
+    humor_mentor: "小蟒 (幽默)",
+    academic_mentor: "小鸮 (学术)",
+    coach_mentor: "小蟹 (实战)",
   };
 
   // 导师风格描述 — 根据当前选中的 agent 动态显示
@@ -565,7 +566,7 @@ export default function FloatingChatAssistant() {
           <button
             onClick={() => setShowHistory(!showHistory)}
             className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
-              showHistory ? "bg-amber-100 border-black text-black" : "border-transparent hover:bg-zinc-150"
+              showHistory ? "bg-amber-100 border-black text-black" : "border-transparent hover:bg-zinc-200"
             }`}
             title="历史记录"
           >
@@ -573,7 +574,7 @@ export default function FloatingChatAssistant() {
           </button>
           <button
             onClick={startNewChat}
-            className="p-1.5 border border-transparent hover:bg-zinc-150 rounded-lg transition-all cursor-pointer"
+            className="p-1.5 border border-transparent hover:bg-zinc-200 rounded-lg transition-all cursor-pointer"
             title="新对话"
           >
             <Plus className="h-4 w-4" />
@@ -581,7 +582,7 @@ export default function FloatingChatAssistant() {
           {/* 扩展 / 还原 按钮 */}
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1.5 border border-transparent hover:bg-zinc-150 rounded-lg transition-all cursor-pointer"
+            className="p-1.5 border border-transparent hover:bg-zinc-200 rounded-lg transition-all cursor-pointer"
             title={isExpanded ? "还原窗口" : "全屏展开"}
           >
             {isExpanded ? (
@@ -592,7 +593,7 @@ export default function FloatingChatAssistant() {
           </button>
           <button
             onClick={closeAssistant}
-            className="p-1.5 border border-transparent hover:bg-zinc-150 rounded-lg transition-all cursor-pointer"
+            className="p-1.5 border border-transparent hover:bg-zinc-200 rounded-lg transition-all cursor-pointer"
             title="收起"
           >
             <X className="h-4 w-4" />
@@ -627,7 +628,7 @@ export default function FloatingChatAssistant() {
                   className={`w-full text-left p-3 rounded-2xl text-xs transition-all flex items-start gap-2.5 border-2 ${
                     currentConversationId === conv.id
                       ? "bg-amber-50 border-black text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                      : "bg-white border-transparent text-zinc-550 hover:bg-zinc-100"
+                      : "bg-white border-transparent text-zinc-500 hover:bg-zinc-100"
                   }`}
                 >
                   <MessageSquare className="h-4 w-4 mt-0.5 shrink-0 text-zinc-400" />
@@ -668,12 +669,13 @@ export default function FloatingChatAssistant() {
                     setSelectedAgentId(id);
                     setShowAgentMenu(false);
                   }}
-                  className={`w-full text-left px-3 py-1.5 text-xs font-black transition-colors hover:bg-amber-50 cursor-pointer ${
+                  className={`w-full text-left px-2.5 py-1.5 text-xs font-black transition-colors hover:bg-amber-50 cursor-pointer flex items-center gap-2 ${
                     selectedAgentId === id
                       ? "text-black bg-amber-100 font-black"
-                      : "text-zinc-550"
+                      : "text-zinc-500"
                   }`}
                 >
+                  <PixelAgentAvatar agentId={id} className="w-6 h-6 shrink-0" />
                   {name}
                 </button>
               ))}
@@ -779,6 +781,9 @@ export default function FloatingChatAssistant() {
                       {isStreaming && (
                         <span className="inline-block w-[3px] h-4 bg-indigo-500 dark:bg-indigo-400 animate-pulse ml-0.5 align-middle rounded-sm" />
                       )}
+                      {!isStreaming && msg.sources && msg.sources.length > 0 && (
+                        <SourceChips sources={msg.sources} />
+                      )}
                     </div>
                   ) : (
                     /* 等待时的思考动画 */
@@ -854,7 +859,7 @@ export default function FloatingChatAssistant() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="向 AI 导师发送消息..."
-            className="flex-1 bg-transparent border-0 outline-none text-sm text-black dark:text-zinc-100 placeholder:text-zinc-450 resize-none py-1.5 max-h-[120px] focus:ring-0 focus:outline-none font-bold"
+            className="flex-1 bg-transparent border-0 outline-none text-sm text-black dark:text-zinc-100 placeholder:text-zinc-400 resize-none py-1.5 max-h-[120px] focus:ring-0 focus:outline-none font-bold"
             disabled={isLoading}
           />
           
@@ -864,7 +869,7 @@ export default function FloatingChatAssistant() {
             className={`p-2 rounded-xl transition-all border-2 border-black ${
               input.trim() && !isLoading
                 ? "bg-indigo-500 text-white hover:bg-indigo-400 cursor-pointer shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[0.5px_0.5px_0px_0px_rgba(0,0,0,1)]"
-                : "bg-zinc-200 text-zinc-400 dark:bg-zinc-700 dark:text-zinc-650"
+                : "bg-zinc-200 text-zinc-400 dark:bg-zinc-700 dark:text-zinc-600"
             }`}
           >
             {isLoading ? (

@@ -75,7 +75,7 @@ function CogniLinkLogo() {
       <h1 className="text-2xl font-black tracking-wider text-black dark:text-white mt-1">
         CogniLink
       </h1>
-      <p className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-550 mt-1 tracking-widest">
+      <p className="text-[10px] font-black uppercase text-zinc-400 dark:text-zinc-500 mt-1 tracking-widest">
         Cognition & Link
       </p>
     </div>
@@ -152,7 +152,7 @@ export default function LoginPage() {
               className={`flex-1 py-2 rounded-xl text-xs font-black transition-all border-2 ${
                 mode === "login"
                   ? "bg-amber-100 border-black text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                  : "border-transparent text-zinc-550 hover:text-black"
+                  : "border-transparent text-zinc-500 hover:text-black"
               }`}
             >
               登录
@@ -165,7 +165,7 @@ export default function LoginPage() {
               className={`flex-1 py-2 rounded-xl text-xs font-black transition-all border-2 ${
                 mode === "register"
                   ? "bg-amber-100 border-black text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                  : "border-transparent text-zinc-550 hover:text-black"
+                  : "border-transparent text-zinc-500 hover:text-black"
               }`}
             >
               注册
@@ -174,7 +174,7 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5 font-bold">
             <div className="space-y-1.5">
-              <Label htmlFor="username" className="text-xs text-zinc-650">用户名</Label>
+              <Label htmlFor="username" className="text-xs text-zinc-600">用户名</Label>
               <Input
                 id="username"
                 type="text"
@@ -189,7 +189,7 @@ export default function LoginPage() {
 
             {mode === "register" && (
               <div className="space-y-1.5">
-                <Label htmlFor="nickname" className="text-xs text-zinc-650">昵称（可选）</Label>
+                <Label htmlFor="nickname" className="text-xs text-zinc-600">昵称（可选）</Label>
                 <Input
                   id="nickname"
                   type="text"
@@ -203,7 +203,7 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-xs text-zinc-650">密码</Label>
+              <Label htmlFor="password" className="text-xs text-zinc-600">密码</Label>
               <Input
                 id="password"
                 type="password"

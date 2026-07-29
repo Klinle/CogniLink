@@ -12,6 +12,8 @@ from api.labs import router as labs_router
 from api.profile import router as profile_router
 from api.admin import router as admin_router
 from api.collections import router as collections_router
+from api.reviews import router as reviews_router
+from api.onboarding import router as onboarding_router
 from core.database import init_db
 from core.config import settings
 
@@ -54,6 +56,8 @@ app.include_router(labs_router)
 app.include_router(profile_router)
 app.include_router(admin_router)
 app.include_router(collections_router)
+app.include_router(reviews_router)
+app.include_router(onboarding_router)
 
 @app.get("/")
 async def root():

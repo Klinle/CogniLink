@@ -544,8 +544,14 @@ class TestRunStream:
             service, "_build_reviewer_prompt", new_callable=AsyncMock,
             return_value="SYSTEM",
         ), patch.object(
-            rag_service, "get_context_for_queries", new_callable=AsyncMock,
-            return_value="知识库上下文",
+            rag_service, "get_context_and_sources_for_queries", new_callable=AsyncMock,
+            return_value={
+                "context": "知识库上下文",
+                "sources": [{
+                    "document_id": "doc-1", "title": "Python 教程",
+                    "page_number": 42, "chunk_id": "chunk-1",
+                }],
+            },
         ), patch.object(
             llm_service, "stream_chat", new=_fake_llm_stream("最终", "回答"),
         ):
@@ -563,6 +569,13 @@ class TestRunStream:
         contents = [e["text"] for e in events if e["type"] == "content"]
         assert "".join(contents) == "最终回答"
         assert events[-1]["type"] == "done"
+        # T3 溯源：rag_bot done 事件携带结构化来源列表
+        rag_done = next(
+            e for e in events
+            if e["type"] == "status" and e["node"] == "rag_bot" and e["status"] == "done"
+        )
+        assert rag_done["data"]["sources"][0]["title"] == "Python 教程"
+        assert rag_done["data"]["sources"][0]["page_number"] == 42
 
     @pytest.mark.asyncio
     async def test_ambiguous_query_short_circuits(self, service):
@@ -580,7 +593,7 @@ class TestRunStream:
                 domain="general", style="general",
                 is_ambiguous=True, clarification=clarification,
             ),
-        ), patch.object(rag_service, "get_context_for_queries", rag_mock):
+        ), patch.object(rag_service, "get_context_and_sources_for_queries", rag_mock):
             events = await self._collect(
                 service, self._base_state(user_message="怎么优化")
             )
@@ -610,7 +623,7 @@ class TestRunStream:
             service, "_build_reviewer_prompt", new_callable=AsyncMock,
             return_value="SYSTEM",
         ), patch.object(
-            rag_service, "get_context_for_queries", rag_mock,
+            rag_service, "get_context_and_sources_for_queries", rag_mock,
         ), patch.object(
             llm_service, "stream_chat", new=_fake_llm_stream("你好！"),
         ):
@@ -645,8 +658,8 @@ class TestRunStream:
             service, "_build_reviewer_prompt", new_callable=AsyncMock,
             return_value="SYSTEM",
         ) as mock_prompt, patch.object(
-            rag_service, "get_context_for_queries", new_callable=AsyncMock,
-            return_value="知识库上下文",
+            rag_service, "get_context_and_sources_for_queries", new_callable=AsyncMock,
+            return_value={"context": "知识库上下文", "sources": []},
         ), patch.object(
             tools_service, "execute_tool", new_callable=AsyncMock,
             return_value="搜索结果摘要",
@@ -683,7 +696,7 @@ class TestRunStream:
             service, "_build_reviewer_prompt", new_callable=AsyncMock,
             return_value="SYSTEM",
         ), patch.object(
-            rag_service, "get_context_for_queries", rag_mock,
+            rag_service, "get_context_and_sources_for_queries", rag_mock,
         ), patch.object(
             llm_service, "stream_chat", new=_fake_llm_stream("回答"),
         ):
@@ -711,8 +724,8 @@ class TestRunStream:
             service, "_build_reviewer_prompt", new_callable=AsyncMock,
             return_value="SYSTEM",
         ), patch.object(
-            rag_service, "get_context_for_queries", new_callable=AsyncMock,
-            return_value="",
+            rag_service, "get_context_and_sources_for_queries", new_callable=AsyncMock,
+            return_value={"context": "", "sources": []},
         ), patch.object(
             llm_service, "stream_chat", new=_fake_llm_stream("ans"),
         ):

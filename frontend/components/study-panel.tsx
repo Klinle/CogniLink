@@ -258,7 +258,7 @@ export default function StudyPanel({
                         {node.name}
                       </span>
                     </div>
-                    <p className="text-[10px] font-bold text-zinc-550 dark:text-zinc-500 mt-1.5 line-clamp-2 leading-relaxed">
+                    <p className="text-[10px] font-bold text-zinc-500 dark:text-zinc-500 mt-1.5 line-clamp-2 leading-relaxed">
                       {node.reason || node.description}
                     </p>
                   </div>
@@ -373,7 +373,7 @@ export default function StudyPanel({
                     </div>
                   )}
                 </div>
-                <p className="text-[10px] font-bold text-zinc-650 dark:text-zinc-400 leading-relaxed bg-[#fcfaf2] p-2.5 rounded-2xl border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <p className="text-[10px] font-bold text-zinc-600 dark:text-zinc-400 leading-relaxed bg-[#fcfaf2] p-2.5 rounded-2xl border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                   <span className="font-black text-black block mb-1">💡 树灵解析：</span>
                   {evalResult.feedback || "回答本题需要掌握对应的计算机核心基础原理。"}
                 </p>
